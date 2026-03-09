@@ -14,91 +14,95 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState(() => getStored('gmmtv_data', { email: '', firstName: '', lastName: '', idNumber: '', phone: '' }));
   const [profiles, setProfiles] = useState(() => getStored('gmmtv_profiles', []));
-  const [cfg, setCfg] = useState(() => getStored('gmmtv_cfg', { formUrl: '', targetDate: '', targetTime: '' }));
-  const [fields, setFields] = useState([]);
-  const [submitUrl, setSubmitUrl] = useState('');
-  const [mapping, setMapping] = useState({});
+  const [targets, setTargets] = useState(() => getStored('gmmtv_targets', []));
+  const [countdowns, setCountdowns] = useState({});
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeErr, setAnalyzeErr] = useState('');
-  const [countdown, setCountdown] = useState(null);
-  const [status, setStatus] = useState('idle');
-  const [submitErr, setSubmitErr] = useState('');
-  const [submitTime, setSubmitTime] = useState('');
-  const [triggerTime, setTriggerTime] = useState('');
   const [quickPaste, setQuickPaste] = useState('');
+  const [bulkUrl, setBulkUrl] = useState('');
   const intervalRef = useRef(null);
-  const submittedRef = useRef(false);
+  const submittedMapRef = useRef({});
 
   useEffect(() => { localStorage.setItem('gmmtv_data', JSON.stringify(data)); }, [data]);
   useEffect(() => { localStorage.setItem('gmmtv_profiles', JSON.stringify(profiles)); }, [profiles]);
-  useEffect(() => { localStorage.setItem('gmmtv_cfg', JSON.stringify(cfg)); }, [cfg]);
+  useEffect(() => { localStorage.setItem('gmmtv_targets', JSON.stringify(targets)); }, [targets]);
 
-  useEffect(() => {
-    if (!fields.length) return;
-    const m = {};
-    const nameFields = fields.filter(f => f.autoMap === 'firstName' || f.autoMap === 'lastName');
-
-    for (const f of fields) {
-      if (f.autoMap === 'email') m[f.entryId] = data.email;
-      else if (f.autoMap === 'firstName') {
-        // If there's only one name field in the form, combine First + Last
-        m[f.entryId] = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
-      }
-      else if (f.autoMap === 'lastName') m[f.entryId] = data.lastName;
-      else if (f.autoMap === 'idNumber') m[f.entryId] = data.idNumber;
-      else if (f.autoMap === 'phone') m[f.entryId] = data.phone;
-      else if (f.autoMap === 'confirm') {
-        const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
-        m[f.entryId] = yesOpt || f.options[0] || 'Yes';
-      }
+  const analyzeAll = async () => {
+    setAnalyzing(true); setAnalyzeErr('');
+    const newTargets = [...targets];
+    for (let i = 0; i < newTargets.length; i++) {
+      if (newTargets[i].fields) continue;
+      try {
+        const res = await fetch(`/api/form-info?url=${encodeURIComponent(newTargets[i].url)}`);
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+        newTargets[i].fields = json.fields;
+        newTargets[i].submitUrl = json.submitUrl;
+        newTargets[i].mapping = {};
+        const nameFields = json.fields.filter(f => f.autoMap === 'firstName' || f.autoMap === 'lastName');
+        for (const f of json.fields) {
+          if (f.autoMap === 'email') newTargets[i].mapping[f.entryId] = data.email;
+          else if (f.autoMap === 'firstName') newTargets[i].mapping[f.entryId] = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
+          else if (f.autoMap === 'lastName') newTargets[i].mapping[f.entryId] = data.lastName;
+          else if (f.autoMap === 'idNumber') newTargets[i].mapping[f.entryId] = data.idNumber;
+          else if (f.autoMap === 'phone') newTargets[i].mapping[f.entryId] = data.phone;
+          else if (f.autoMap === 'confirm') {
+            const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
+            newTargets[i].mapping[f.entryId] = yesOpt || f.options[0] || 'Yes';
+          }
+        }
+      } catch (e) { setAnalyzeErr(`Lỗi form ${i + 1}: ${e.message}`); break; }
     }
-    setMapping(m);
-  }, [fields, data]);
+    setTargets(newTargets);
+    setAnalyzing(false);
+    if (!analyzeErr) setStep(3);
+  };
+
+  const doSubmit = async (tid) => {
+    const t = targets.find(x => x.id === tid);
+    if (!t || t.status === 'success' || t.status === 'submitting') return;
+
+    const now = new Date();
+    const triggerStr = now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+    setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'submitting', triggerTime: triggerStr } : x));
+
+    try {
+      const body = new URLSearchParams();
+      for (const [entryId, val] of Object.entries(t.mapping)) { if (val) body.append(entryId, val); }
+      if (data.email) body.append('emailAddress', data.email);
+      await fetch(t.submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+      const done = new Date();
+      const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
+      setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'success', submitTime: doneStr } : x));
+    } catch (e) {
+      setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'error', err: e.message } : x));
+    }
+  };
 
   useEffect(() => {
     if (step !== 4) return;
-    submittedRef.current = false;
+    submittedMapRef.current = {};
     intervalRef.current = setInterval(() => {
-      const target = new Date(`${cfg.targetDate}T${cfg.targetTime}`);
-      const diff = target - new Date();
-      if (diff <= 0) {
-        setCountdown({ h: 0, m: 0, s: 0, cs: 0 });
-        clearInterval(intervalRef.current);
-        if (!submittedRef.current) { submittedRef.current = true; doSubmit(); }
-      } else {
-        setCountdown({ h: Math.floor(diff / 3600000), m: Math.floor((diff % 3600000) / 60000), s: Math.floor((diff % 60000) / 1000), cs: Math.floor((diff % 1000) / 10) });
-      }
+      const now = new Date();
+      const newCDs = {};
+      targets.forEach(t => {
+        const targetDate = new Date(`${t.date}T${t.time}`);
+        const diff = targetDate - now;
+        if (diff <= 0) {
+          newCDs[t.id] = { h: 0, m: 0, s: 0, cs: 0 };
+          if (!submittedMapRef.current[t.id]) {
+            submittedMapRef.current[t.id] = true;
+            doSubmit(t.id);
+          }
+        } else {
+          newCDs[t.id] = { h: Math.floor(diff / 3600000), m: Math.floor((diff % 3600000) / 60000), s: Math.floor((diff % 60000) / 1000), cs: Math.floor((diff % 1000) / 10) };
+        }
+      });
+      setCountdowns(newCDs);
     }, 16);
     return () => clearInterval(intervalRef.current);
-  }, [step, cfg, submitUrl, mapping]);
-
-  const analyzeForm = async () => {
-    setAnalyzing(true); setAnalyzeErr(''); setFields([]);
-    try {
-      const res = await fetch(`/api/form-info?url=${encodeURIComponent(cfg.formUrl)}`);
-      const json = await res.json();
-      if (json.error) throw new Error(json.error);
-      setFields(json.fields);
-      setSubmitUrl(json.submitUrl);
-      setStep(3);
-    } catch (e) { setAnalyzeErr(e.message); }
-    setAnalyzing(false);
-  };
-
-  const doSubmit = async () => {
-    const now = new Date();
-    setTriggerTime(now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0'));
-    setStatus('submitting');
-    try {
-      const body = new URLSearchParams();
-      for (const [entryId, val] of Object.entries(mapping)) { if (val) body.append(entryId, val); }
-      if (data.email) body.append('emailAddress', data.email);
-      await fetch(submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
-      const done = new Date();
-      setSubmitTime(done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0'));
-      setStatus('success');
-    } catch (e) { setStatus('error'); setSubmitErr(e.message); }
-  };
+  }, [step, targets]);
 
   const typeLabel = (t) => ({ 0: 'Văn bản', 2: 'Radio', 4: 'Checkbox', 1: 'Đoạn văn', 9: 'Ngày', 10: 'Giờ' }[t] || `type ${t}`);
   const stateOf = (s) => s < step ? 'done' : s === step ? 'active' : 'idle';
@@ -267,29 +271,49 @@ export default function App() {
           {/* ── STEP 2 ── */}
           {step === 2 && (
             <div className="card">
-              <div className="ctitle"><div className="cicon">🔗</div>Link form &amp; Thời gian mở</div>
+              <div className="ctitle"><div className="cicon">🔗</div>Danh sách Form ({targets.length})</div>
+
               <div className="fgrp">
-                <label>Link Google Form</label>
-                <input type="url" placeholder="https://docs.google.com/forms/d/..." value={cfg.formUrl} onChange={e => setCfg({ ...cfg, formUrl: e.target.value })} />
+                <label>Thêm hàng loạt (Dán list link form)</label>
+                <textarea
+                  style={{ width: '100%', minHeight: '80px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '10px', padding: '10px', color: '#eeeef8', fontSize: '12px', fontFamily: 'monospace' }}
+                  placeholder="https://docs.google.com/forms/d/1...&#10;https://docs.google.com/forms/d/2..."
+                  value={bulkUrl} onChange={e => setBulkUrl(e.target.value)}
+                />
+                <button className="bsecondary" style={{ marginTop: '8px', width: '100%' }} onClick={() => {
+                  const links = bulkUrl.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+                  const newOnes = links.map(l => ({ id: Math.random().toString(36).substr(2, 9), url: l, date: targets[0]?.date || '', time: targets[0]?.time || '', status: 'idle' }));
+                  setTargets([...targets, ...newOnes]);
+                  setBulkUrl('');
+                }}>+ Thêm vào danh sách</button>
               </div>
-              <div className="frow fgrp">
-                <div>
-                  <label>Ngày mở form</label>
-                  <input type="date" value={cfg.targetDate} onChange={e => setCfg({ ...cfg, targetDate: e.target.value })} />
-                </div>
-                <div>
-                  <label>Giờ mở form (VN)</label>
-                  <input type="time" step="1" value={cfg.targetTime} onChange={e => setCfg({ ...cfg, targetTime: e.target.value })} />
-                </div>
+
+              <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+                {targets.map((t, idx) => (
+                  <div key={t.id} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px', padding: '12px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11px', color: '#555' }}>Form #{idx + 1}</span>
+                      <button style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '11px', cursor: 'pointer' }} onClick={() => setTargets(targets.filter(x => x.id !== t.id))}>Xóa</button>
+                    </div>
+                    <div className="fgrp">
+                      <input style={{ fontSize: '12px', padding: '8px' }} value={t.url} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, url: e.target.value } : x))} />
+                    </div>
+                    <div className="frow">
+                      <input type="date" style={{ fontSize: '12px', padding: '8px' }} value={t.date} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, date: e.target.value } : x))} />
+                      <input type="time" step="1" style={{ fontSize: '12px', padding: '8px' }} value={t.time} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, time: e.target.value } : x))} />
+                    </div>
+                  </div>
+                ))}
               </div>
+
               {analyzeErr && <div className="err-box">❌ {analyzeErr}</div>}
-              {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích form...</div>}
+              {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích các form...</div>}
+
               <div className="brow">
                 <button className="bsecondary" onClick={() => setStep(1)}>← Quay lại</button>
-                <button className="bprimary" disabled={analyzing} onClick={() => {
-                  if (!cfg.formUrl || !cfg.targetDate || !cfg.targetTime) { alert('Điền đầy đủ!'); return; }
-                  analyzeForm();
-                }}>{analyzing ? 'Đang phân tích...' : '🔍 Phân tích Form →'}</button>
+                <button className="bprimary" disabled={analyzing || !targets.length} onClick={analyzeAll}>
+                  {analyzing ? 'Đang phân tích...' : '🔍 Phân tích & Tiếp tục →'}
+                </button>
               </div>
             </div>
           )}
@@ -297,47 +321,52 @@ export default function App() {
           {/* ── STEP 3 ── */}
           {step === 3 && (
             <div className="card">
-              <div className="ctitle">
-                <div className="cicon">✅</div>
-                Kiểm tra mapping dữ liệu
-                <span className="gtag">{mappedCount}/{fields.length} auto</span>
-                {unmappedFields.length > 0 && <span className="utag">{unmappedFields.length} cần chọn</span>}
-              </div>
+              <div className="ctitle"><div className="cicon">✅</div>Kiểm tra dữ liệu ({targets.length} form)</div>
 
-              <div className="fmap">
-                <div className="fmap-hdr"><div>Trường trong Form</div><div /><div>Giá trị sẽ điền</div></div>
-                {fields.map((f, i) => (
-                  <div className="fmap-row" key={i}>
-                    <div>
-                      <div style={{ color: '#ccc', fontWeight: 600, fontSize: '12.5px' }}>{f.title}</div>
-                      <div className="ftype">{typeLabel(f.type)}</div>
-                    </div>
-                    <div className="farr">→</div>
-                    <div>
-                      {f.autoMap ? (
-                        <>
-                          <div className="fval">{mapping[f.entryId] || '—'}</div>
-                          <div className="ftype" style={{ color: '#ff69b4' }}>{FIELD_LABELS[f.autoMap]}</div>
-                        </>
-                      ) : (
-                        <select value={mapping[f.entryId] || ''} onChange={e => setMapping({ ...mapping, [f.entryId]: e.target.value })} style={{ fontSize: '12px', padding: '6px 10px' }}>
-                          <option value="">-- Chọn --</option>
-                          {Object.entries(data).map(([k, v]) => <option key={k} value={v}>{FIELD_LABELS[k]}: {v}</option>)}
-                          {f.options.map(o => <option key={o} value={o}>Option: {o}</option>)}
-                        </select>
-                      )}
+              <div style={{ maxHeight: '450px', overflowY: 'auto', border: '1px solid rgba(255,255,255,.07)', borderRadius: '12px', padding: '10px' }}>
+                {targets.map((t, idx) => (
+                  <div key={t.id} style={{ marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493', marginBottom: '10px' }}># {idx + 1}. {t.url.substring(0, 40)}...</div>
+                    <div className="fmap">
+                      {t.fields?.map((f, fi) => (
+                        <div className="fmap-row" key={fi}>
+                          <div>
+                            <div style={{ color: '#ccc', fontSize: '11px' }}>{f.title}</div>
+                          </div>
+                          <div className="farr">→</div>
+                          <div>
+                            {f.autoMap ? (
+                              <div className="fval" style={{ fontSize: '11px' }}>{t.mapping[f.entryId] || '—'}</div>
+                            ) : (
+                              <select
+                                value={t.mapping[f.entryId] || ''}
+                                onChange={e => {
+                                  const newTargets = [...targets];
+                                  newTargets[idx].mapping[f.entryId] = e.target.value;
+                                  setTargets(newTargets);
+                                }}
+                                style={{ fontSize: '10px', padding: '4px' }}
+                              >
+                                <option value="">-- Chọn --</option>
+                                {Object.entries(data).map(([k, v]) => <option key={k} value={v}>{FIELD_LABELS[k]}: {v}</option>)}
+                                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ background: 'rgba(0,230,118,.05)', border: '1px solid rgba(0,230,118,.15)', borderRadius: '10px', padding: '11px 14px', fontSize: '12px', color: '#5a8a6a', marginBottom: '14px', lineHeight: '1.7' }}>
-                🚀 Đúng giờ mở form, tool sẽ <strong style={{ color: '#00e676' }}>tự động POST trực tiếp lên Google Forms</strong> — không cần mở tab, không cần Tampermonkey, không cần bạn làm gì.
+              <div style={{ background: 'rgba(0,230,118,.05)', border: '1px solid rgba(0,230,118,.15)', borderRadius: '10px', padding: '11px 14px', fontSize: '11px', color: '#5a8a6a', margin: '14px 0', lineHeight: '1.7' }}>
+                🚀 Tool sẽ trigger song song tất cả các form trên đúng vào giờ đã hẹn.
               </div>
 
               <div className="brow">
                 <button className="bsecondary" onClick={() => setStep(2)}>← Sửa</button>
-                <button className="bprimary" onClick={() => { setStatus('idle'); setStep(4); }}>🚀 Kích hoạt đếm ngược →</button>
+                <button className="bprimary" onClick={() => setStep(4)}>🚀 Kích hoạt tất cả ({targets.length}) →</button>
               </div>
             </div>
           )}
@@ -345,81 +374,56 @@ export default function App() {
           {/* ── STEP 4 ── */}
           {step === 4 && (
             <div className="card">
-              <div className="ctitle">
-                <div className="cicon">⏱️</div>
-                {status === 'idle' && <><span className="glowdot" />Đang chờ giờ mở form...</>}
-                {status === 'submitting' && <><span className="glowdot" />Đang submit...</>}
-                {status === 'success' && '🎉 Đã submit!'}
-                {status === 'error' && '❌ Lỗi'}
+              <div className="ctitle"><div className="cicon">⏱️</div>Dashboard Theo Dõi ({targets.length})</div>
+
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {targets.map((t, idx) => (
+                  <div key={t.id} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: '16px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#aaa' }}>FORM #{idx + 1}</span>
+                      <span className={`gtag ${t.status}`} style={{
+                        background: t.status === 'success' ? 'rgba(0,230,118,.1)' : t.status === 'submitting' ? 'rgba(255,20,147,.1)' : 'rgba(255,255,255,.05)',
+                        color: t.status === 'success' ? '#00e676' : t.status === 'submitting' ? '#ff1493' : '#666'
+                      }}>
+                        {t.status === 'idle' ? 'Đang chờ...' : t.status === 'submitting' ? '⚡ Gửi...' : t.status === 'success' ? '✓ Xong' : '❌ Lỗi'}
+                      </span>
+                    </div>
+
+                    {t.status === 'idle' && (
+                      <div className="cdwrap" style={{ padding: '5px 0' }}>
+                        <div className="cddigits" style={{ gap: '4px' }}>
+                          <div className="dblk"><span className="dval" style={{ fontSize: '24px' }}>{pad(countdowns[t.id]?.h || 0)}</span></div>
+                          <div className="dsep" style={{ fontSize: '18px', paddingBottom: '10px' }}>:</div>
+                          <div className="dblk"><span className="dval" style={{ fontSize: '24px' }}>{pad(countdowns[t.id]?.m || 0)}</span></div>
+                          <div className="dsep" style={{ fontSize: '18px', paddingBottom: '10px' }}>:</div>
+                          <div className="dblk"><span className="dval" style={{ fontSize: '24px' }}>{pad(countdowns[t.id]?.s || 0)}</span></div>
+                          <div className="dsep" style={{ fontSize: '14px', paddingBottom: '12px' }}>.</div>
+                          <div className="dblk"><span className="dval" style={{ fontSize: '18px', color: '#555' }}>{pad(countdowns[t.id]?.cs || 0)}</span></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {t.status === 'success' && (
+                      <div style={{ fontSize: '11px', color: '#00e676', textAlign: 'center', fontStyle: 'italic' }}>
+                        Gửi lúc {t.submitTime} (Trigger: {t.triggerTime})
+                      </div>
+                    )}
+
+                    {t.status === 'error' && (
+                      <div style={{ fontSize: '11px', color: '#ff6b6b', textAlign: 'center' }}>
+                        Lỗi: {t.err} <button className="bsecondary" style={{ padding: '2px 8px', marginLeft: '5px' }} onClick={() => doSubmit(t.id)}>Thử lại</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
 
-              {status === 'idle' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '12px', color: '#666', lineHeight: '1.7' }}>
-                  🎯 Submit lúc <strong style={{ color: '#ff1493' }}>{cfg.targetDate} {cfg.targetTime}</strong>
-                  &nbsp;·&nbsp; {fields.length} trường &nbsp;·&nbsp;
-                  <strong style={{ color: '#00e676' }}>Zero interaction</strong>
-                </div>
-              )}
-
-              {status === 'idle' && countdown && (
-                <div className="cdwrap">
-                  <div className="cddigits">
-                    <div className="dblk"><span className="dval">{pad(countdown.h)}</span><div className="dlbl">Giờ</div></div>
-                    <div className="dsep">:</div>
-                    <div className="dblk"><span className="dval">{pad(countdown.m)}</span><div className="dlbl">Phút</div></div>
-                    <div className="dsep">:</div>
-                    <div className="dblk"><span className="dval">{pad(countdown.s)}</span><div className="dlbl">Giây</div></div>
-                    <div className="dsep" style={{ fontSize: 'clamp(18px,4vw,28px)', paddingBottom: '20px' }}>.</div>
-                    <div className="dblk csblk"><span className="dval">{pad(countdown.cs)}</span><div className="dlbl">cs</div></div>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#444', marginTop: '8px' }}>Giữ tab này mở · Tự động submit khi hết giờ đếm ngược</div>
-                </div>
-              )}
-
-              {status === 'submitting' && (
-                <div style={{ textAlign: 'center', padding: '28px 0' }}>
-                  <div className="spin" style={{ margin: '0 auto 14px' }} />
-                  <div style={{ color: '#ff69b4', fontWeight: 700, fontSize: '15px' }}>Đang gửi đến Google Forms server...</div>
-                  <div style={{ fontSize: '11px', color: '#444', marginTop: '10px' }}>Triggered: {triggerTime}</div>
-                </div>
-              )}
-
-              {status === 'success' && (
-                <div className="success-box">
-                  <span className="big">🎉</span>
-                  <strong>ĐÃ SUBMIT THÀNH CÔNG!</strong>
-                  <p>Dữ liệu đã được gửi lúc <strong style={{ color: '#00e676' }}>{submitTime}</strong><br />
-                    Kiểm tra email <strong style={{ color: '#00e676' }}>{data.email}</strong> để nhận xác nhận từ GMMTV.</p>
-                  <div className="ts">Timestamp: {submitTime}</div>
-                </div>
-              )}
-
-              {status === 'error' && (
-                <div className="err-box" style={{ padding: '14px' }}>
-                  <strong>❌ Lỗi:</strong> {submitErr}
-                  <button className="bprimary" style={{ marginTop: '10px' }} onClick={doSubmit}>Thử lại ngay</button>
-                </div>
-              )}
-
-              {status !== 'success' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', borderRadius: '10px', padding: '12px 14px', marginTop: '14px' }}>
-                  <div style={{ fontSize: '11px', color: '#444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Preview dữ liệu submit</div>
-                  {[['Email', data.email], ['First Name', data.firstName], ['Last Name', data.lastName], ['ID / Passport', data.idNumber], ['Phone', data.phone]].map(([k, v]) => (
-                    <div className="irow" key={k}><span className="ik">{k}</span><span className="iv">{v}</span></div>
-                  ))}
-                </div>
-              )}
-
-              {status !== 'success' && (
-                <div className="brow" style={{ marginTop: '14px' }}>
-                  <button className="bsecondary" onClick={() => { setStep(3); setStatus('idle'); submittedRef.current = false; clearInterval(intervalRef.current); }}>← Sửa</button>
-                  {status === 'idle' && (
-                    <button className="bprimary" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: '#888', boxShadow: 'none' }} onClick={doSubmit}>
-                      ⚡ Test Submit ngay
-                    </button>
-                  )}
-                </div>
-              )}
+              <div className="brow" style={{ marginTop: '20px' }}>
+                <button className="bsecondary" style={{ flex: 1 }} onClick={() => setStep(3)}>← Quay lại</button>
+                <button className="bprimary" style={{ flex: 1, background: '#252535', boxShadow: 'none' }} onClick={() => {
+                  if (confirm('Dừng tất cả countdown?')) setStep(1);
+                }}>Dừng Tất Cả</button>
+              </div>
             </div>
           )}
 
