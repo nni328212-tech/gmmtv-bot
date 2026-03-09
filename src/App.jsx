@@ -16,6 +16,9 @@ export default function App() {
   const [profiles, setProfiles] = useState(() => getStored('gmmtv_profiles', []));
   const [targets, setTargets] = useState(() => getStored('gmmtv_targets', []));
   const [countdowns, setCountdowns] = useState({});
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeErr, setAnalyzeErr] = useState('');
+  const [quickPaste, setQuickPaste] = useState('');
   const [bulkData, setBulkData] = useState('');
   const intervalRef = useRef(null);
   const submittedMapRef = useRef({});
@@ -56,7 +59,7 @@ export default function App() {
     for (let i = 0; i < newTargets.length; i++) {
       if (newTargets[i].fields) continue;
 
-      const row = newTargets[i].row; // The data from the Excel row
+      const row = newTargets[i].row || {}; // The data from the Excel row
       const url = row['URL'] || row['Link'] || row['link'] || newTargets[i].url;
       if (!url) { setAnalyzeErr(`Dòng ${i + 1} thiếu link form!`); break; }
 
@@ -96,7 +99,8 @@ export default function App() {
           newTargets[i].mapping[f.entryId] = val;
         }
         // Capture email for submit
-        newTargets[i].email = newTargets[i].mapping[json.fields.find(f => f.autoMap === 'email')?.entryId] || data.email;
+        const emailField = json.fields.find(f => f.autoMap === 'email');
+        newTargets[i].email = emailField ? newTargets[i].mapping[emailField.entryId] : data.email;
 
       } catch (e) { setAnalyzeErr(`Lỗi form ${i + 1}: ${e.message}`); break; }
     }
@@ -351,9 +355,9 @@ export default function App() {
                       {targets.map((t, idx) => (
                         <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,.03)' }}>
                           <td style={{ padding: '8px', color: '#ff1493' }}>{idx + 1}</td>
-                          <td style={{ padding: '8px', color: '#aaa' }}>{t.url.substring(0, 25)}...</td>
+                          <td style={{ padding: '8px', color: '#aaa' }}>{t.url?.substring(0, 25)}...</td>
                           <td style={{ padding: '8px' }}>{t.date} {t.time}</td>
-                          <td style={{ padding: '8px', color: '#00e676' }}>{Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ')}</td>
+                          <td style={{ padding: '8px', color: '#00e676' }}>{t.row ? Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ') : 'No data'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -382,7 +386,7 @@ export default function App() {
                 {targets.map((t, idx) => (
                   <div key={t.id} style={{ marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493' }}># {idx + 1}. {t.url.substring(0, 30)}...</div>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493' }}># {idx + 1}. {t.url?.substring(0, 30)}...</div>
                       <div style={{ fontSize: '11px', color: '#aaa' }}>{t.date} {t.time}</div>
                     </div>
                     <div className="fmap">
@@ -440,7 +444,7 @@ export default function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span style={{ fontSize: '10px', fontWeight: 700, color: '#555' }}>FORM #{idx + 1}</span>
-                        <span style={{ fontSize: '11px', color: '#aaa' }}>{t.url.substring(0, 30)}...</span>
+                        <span style={{ fontSize: '11px', color: '#aaa' }}>{t.url?.substring(0, 30)}...</span>
                       </div>
                       <span className={`gtag ${t.status}`} style={{
                         background: t.status === 'success' ? 'rgba(0,230,118,.1)' : t.status === 'submitting' ? 'rgba(255,20,147,.1)' : 'rgba(255,255,255,.05)',
