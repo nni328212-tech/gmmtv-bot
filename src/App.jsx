@@ -111,8 +111,6 @@ export default function App() {
 
   const typeLabel = (t) => ({ 0: 'Văn bản', 2: 'Radio', 4: 'Checkbox', 1: 'Đoạn văn', 9: 'Ngày', 10: 'Giờ' }[t] || `type ${t}`);
   const stateOf = (s) => s < step ? 'done' : s === step ? 'active' : 'idle';
-  const mappedCount = fields.filter(f => f.autoMap && mapping[f.entryId]).length;
-  const unmappedFields = fields.filter(f => !f.autoMap);
 
   const css = `
     ${FONTS}
