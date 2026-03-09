@@ -323,11 +323,21 @@ export default function App() {
               <div className="ctitle"><div className="cicon">📊</div>Import dữ liệu từ Excel</div>
 
               <div className="fgrp">
-                <label>Copy từ Excel và dán vào đây (Có tiêu đề cột)</label>
-                <div style={{ fontSize: '10px', color: '#555', marginBottom: '5px' }}>Yêu cầu có ít nhất cột: <strong>Link, Date, Time</strong>. Các cột khác (Họ Tên, CCCD...) sẽ tự động map.</div>
+                <label>Dán dữ liệu Excel (Ctrl+V)</label>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{ flex: 1, fontSize: '11px', color: '#888', lineHeight: '1.4' }}>
+                    Mỗi hàng gồm một Link và dữ liệu của người đó. <br />
+                    <span style={{ color: '#ff1493' }}>Yêu cầu cột: <strong>Link, Date, Time</strong></span>
+                  </div>
+                  <button className="bsecondary" style={{ fontSize: '10px', height: 'fit-content', padding: '4px 10px' }} onClick={() => {
+                    const sample = "Link\tDate\tTime\tName\tCCCD\nhttps://forms.gle/K5GdudyfVgvFXgX5A\t2026-03-26\t10:00:00\tTHU\t012345\nhttps://forms.gle/GgjnPxYYdukDUfp39\t2026-03-27\t10:00:00\tNGA\t67890";
+                    navigator.clipboard.writeText(sample);
+                    alert('Đã copy dữ liệu mẫu! Hãy dán (Ctrl+V) vào ô bên dưới.');
+                  }}>📋 Copy mẫu Excel</button>
+                </div>
                 <textarea
-                  style={{ width: '100%', minHeight: '150px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,147,20,0.3)', borderRadius: '12px', padding: '12px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
-                  placeholder="Link	Date	Time	Name	ID&#10;https://...	2026-03-26	10:00:00	Thu	12345&#10;https://...	2026-03-27	10:00:00	Nga	67890"
+                  style={{ width: '100%', minHeight: '120px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,147,20,0.3)', borderRadius: '12px', padding: '12px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
+                  placeholder="Dán nội dung bôi đen từ Excel vào đây..."
                   value={bulkData} onChange={e => setBulkData(e.target.value)}
                 />
                 <button className="bprimary" style={{ marginTop: '10px' }} onClick={() => {
@@ -342,7 +352,7 @@ export default function App() {
                     status: 'idle'
                   }));
                   setTargets(newTargets);
-                }}>⚡ Lock & Load ({targets.length} hàng)</button>
+                }}>⚡ Xác nhận danh sách ({targets.length} form)</button>
               </div>
 
               {targets.length > 0 && (
