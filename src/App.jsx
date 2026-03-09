@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Kanit:wght@300;400;500;600;700&display=swap');`;
 const removeAccents = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 const pad = (n) => String(n).padStart(2, '0');
-const FIELD_LABELS = { email: 'Email', firstName: 'First Name', lastName: 'Last Name', idNumber: 'CCCD / Passport', phone: 'Phone', confirm: 'Xác nhận (Yes)' };
+const FIELD_LABELS = { email: 'Email', firstName: 'Họ và Tên (First-Last Name)', lastName: 'Last Name', idNumber: 'Số giấy tờ (Identification No.)', phone: 'Số điện thoại (Phone Number)', confirm: 'Xác nhận (Yes)' };
 
 const getStored = (key, def) => {
   const v = localStorage.getItem(key);
@@ -305,12 +305,12 @@ export default function App() {
                 </div>
               </div>
               <div className="fgrp">
-                <label>Số CCCD / Hộ chiếu</label>
-                <input type="text" placeholder="0123456789" value={data.idNumber} onChange={e => setData({ ...data, idNumber: e.target.value })} />
+                <label>Số giấy tờ (Identification / Passport No.)</label>
+                <input type="text" placeholder="Dãy số CCCD hoặc Passport" value={data.idNumber} onChange={e => setData({ ...data, idNumber: e.target.value })} />
               </div>
               <div className="fgrp">
-                <label>Số điện thoại</label>
-                <input type="tel" placeholder="0912345678" value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} />
+                <label>Số điện thoại (Phone Number)</label>
+                <input type="tel" placeholder="Ví dụ: 0912345678" value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} />
               </div>
               <div className="warn"><strong>⚠️ Lưu ý</strong>Hệ thống tự động VIẾT HOA và BỎ DẤU. Tên cần khớp hoàn toàn với CCCD/Hộ chiếu.</div>
               <button className="bprimary" onClick={() => { if (Object.values(data).every(v => v.trim())) setStep(2); else alert('Điền đầy đủ thông tin!'); }}>Tiếp theo →</button>
