@@ -269,23 +269,41 @@ export default function App() {
 
               <div className="frow fgrp">
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label>Profiles đã lưu</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <select style={{ flex: 2 }} value="" onChange={e => {
+                  <label>Profiles đã lưu (Hàng loạt từ Excel)</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <select style={{ width: '100%' }} value="" onChange={e => {
                       const p = profiles.find(x => x.idNumber === e.target.value);
                       if (p) setData(p);
                     }}>
-                      <option value="">-- Chọn profile --</option>
+                      <option value="">-- Chọn profile đã lưu --</option>
                       {profiles.map(p => <option key={p.idNumber} value={p.idNumber}>{p.firstName} {p.lastName} ({p.idNumber})</option>)}
                     </select>
-                    <button className="bsecondary" style={{ flex: 1 }} onClick={() => {
-                      if (!data.idNumber) return;
-                      if (profiles.find(p => p.idNumber === data.idNumber)) {
-                        setProfiles(profiles.map(p => p.idNumber === data.idNumber ? data : p));
-                      } else {
-                        setProfiles([...profiles, data]);
-                      }
-                    }}>Lưu Profile</button>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button className="bsecondary" style={{ flex: 1 }} onClick={() => {
+                        if (!data.idNumber) return;
+                        if (profiles.find(p => p.idNumber === data.idNumber)) {
+                          setProfiles(profiles.map(p => p.idNumber === data.idNumber ? data : p));
+                        } else {
+                          setProfiles([...profiles, data]);
+                        }
+                        alert('Đã lưu profile hiện tại!');
+                      }}>Lưu người này</button>
+
+                      <button className="bsecondary" style={{ flex: 1 }} onClick={() => {
+                        const txt = prompt("Dán danh sách Excel (Email	First	Last	ID	Phone):");
+                        if (!txt) return;
+                        const lines = txt.trim().split('\n').map(l => l.split('\t'));
+                        const newProfiles = lines.map(cols => {
+                          if (cols.length < 5) return null;
+                          return { email: cols[0].trim(), firstName: removeAccents(cols[1]).toUpperCase(), lastName: removeAccents(cols[2]).toUpperCase(), idNumber: cols[3].trim(), phone: cols[4].trim() };
+                        }).filter(p => p);
+                        if (newProfiles.length) {
+                          setProfiles([...profiles, ...newProfiles]);
+                          alert(`Đã thêm ${newProfiles.length} profiles!`);
+                        }
+                      }}>📥 Nhập hàng loạt Profile</button>
+                    </div>
                   </div>
                 </div>
               </div>
