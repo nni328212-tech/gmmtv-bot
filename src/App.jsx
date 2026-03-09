@@ -32,6 +32,10 @@ export default function App() {
     const newTargets = [...targets];
     for (let i = 0; i < newTargets.length; i++) {
       if (newTargets[i].fields) continue;
+
+      // Find the associated profile data
+      const p = profiles.find(x => x.firstName === newTargets[i].profileName) || data;
+
       try {
         const res = await fetch(`/api/form-info?url=${encodeURIComponent(newTargets[i].url)}`);
         const json = await res.json();
@@ -39,13 +43,14 @@ export default function App() {
         newTargets[i].fields = json.fields;
         newTargets[i].submitUrl = json.submitUrl;
         newTargets[i].mapping = {};
+        newTargets[i].email = p.email; // Store email with target
         const nameFields = json.fields.filter(f => f.autoMap === 'firstName' || f.autoMap === 'lastName');
         for (const f of json.fields) {
-          if (f.autoMap === 'email') newTargets[i].mapping[f.entryId] = data.email;
-          else if (f.autoMap === 'firstName') newTargets[i].mapping[f.entryId] = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
-          else if (f.autoMap === 'lastName') newTargets[i].mapping[f.entryId] = data.lastName;
-          else if (f.autoMap === 'idNumber') newTargets[i].mapping[f.entryId] = data.idNumber;
-          else if (f.autoMap === 'phone') newTargets[i].mapping[f.entryId] = data.phone;
+          if (f.autoMap === 'email') newTargets[i].mapping[f.entryId] = p.email;
+          else if (f.autoMap === 'firstName') newTargets[i].mapping[f.entryId] = nameFields.length === 1 ? `${p.firstName} ${p.lastName}`.trim() : p.firstName;
+          else if (f.autoMap === 'lastName') newTargets[i].mapping[f.entryId] = p.lastName;
+          else if (f.autoMap === 'idNumber') newTargets[i].mapping[f.entryId] = p.idNumber;
+          else if (f.autoMap === 'phone') newTargets[i].mapping[f.entryId] = p.phone;
           else if (f.autoMap === 'confirm') {
             const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
             newTargets[i].mapping[f.entryId] = yesOpt || f.options[0] || 'Yes';
@@ -70,7 +75,7 @@ export default function App() {
     try {
       const body = new URLSearchParams();
       for (const [entryId, val] of Object.entries(t.mapping)) { if (val) body.append(entryId, val); }
-      if (data.email) body.append('emailAddress', data.email);
+      if (t.email) body.append('emailAddress', t.email);
       await fetch(t.submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
@@ -282,25 +287,40 @@ export default function App() {
                 />
                 <button className="bsecondary" style={{ marginTop: '8px', width: '100%' }} onClick={() => {
                   const links = bulkUrl.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-                  const newOnes = links.map(l => ({ id: Math.random().toString(36).substr(2, 9), url: l, date: targets[0]?.date || '', time: targets[0]?.time || '', status: 'idle' }));
+                  const newOnes = links.map(l => ({
+                    id: Math.random().toString(36).substr(2, 9),
+                    url: l,
+                    date: targets[targets.length - 1]?.date || '',
+                    time: targets[targets.length - 1]?.time || '',
+                    profileName: data.firstName || 'Cá nhân',
+                    status: 'idle'
+                  }));
                   setTargets([...targets, ...newOnes]);
                   setBulkUrl('');
                 }}>+ Thêm vào danh sách</button>
               </div>
 
-              <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+              <div style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '16px' }}>
                 {targets.map((t, idx) => (
                   <div key={t.id} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px', padding: '12px', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#555' }}>Form #{idx + 1}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: '#ff1493', fontWeight: 700 }}>Form #{idx + 1}</span>
+                      <select
+                        value={t.profileName}
+                        onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, profileName: e.target.value } : x))}
+                        style={{ fontSize: '11px', padding: '2px 8px', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#00e676' }}
+                      >
+                        <option value={data.firstName}>{data.firstName} (Hiện tại)</option>
+                        {profiles.map(p => <option key={p.firstName} value={p.firstName}>{p.firstName}</option>)}
+                      </select>
                       <button style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '11px', cursor: 'pointer' }} onClick={() => setTargets(targets.filter(x => x.id !== t.id))}>Xóa</button>
                     </div>
-                    <div className="fgrp">
-                      <input style={{ fontSize: '12px', padding: '8px' }} value={t.url} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, url: e.target.value } : x))} />
+                    <div className="fgrp" style={{ marginBottom: '8px' }}>
+                      <input style={{ fontSize: '11px', padding: '6px', color: '#888' }} value={t.url} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, url: e.target.value } : x))} />
                     </div>
                     <div className="frow">
-                      <input type="date" style={{ fontSize: '12px', padding: '8px' }} value={t.date} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, date: e.target.value } : x))} />
-                      <input type="time" step="1" style={{ fontSize: '12px', padding: '8px' }} value={t.time} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, time: e.target.value } : x))} />
+                      <input type="date" style={{ fontSize: '11px', padding: '6px' }} value={t.date} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, date: e.target.value } : x))} />
+                      <input type="time" step="1" style={{ fontSize: '11px', padding: '6px' }} value={t.time} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, time: e.target.value } : x))} />
                     </div>
                   </div>
                 ))}
@@ -326,7 +346,10 @@ export default function App() {
               <div style={{ maxHeight: '450px', overflowY: 'auto', border: '1px solid rgba(255,255,255,.07)', borderRadius: '12px', padding: '10px' }}>
                 {targets.map((t, idx) => (
                   <div key={t.id} style={{ marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493', marginBottom: '10px' }}># {idx + 1}. {t.url.substring(0, 40)}...</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493' }}># {idx + 1}. {t.url.substring(0, 30)}...</div>
+                      <div style={{ fontSize: '11px', color: '#00e676', fontWeight: 700 }}>👤 {t.profileName}</div>
+                    </div>
                     <div className="fmap">
                       {t.fields?.map((f, fi) => (
                         <div className="fmap-row" key={fi}>
@@ -380,7 +403,10 @@ export default function App() {
                 {targets.map((t, idx) => (
                   <div key={t.id} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: '16px', padding: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#aaa' }}>FORM #{idx + 1}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#555' }}>FORM #{idx + 1}</span>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#00e676' }}>👤 {t.profileName}</span>
+                      </div>
                       <span className={`gtag ${t.status}`} style={{
                         background: t.status === 'success' ? 'rgba(0,230,118,.1)' : t.status === 'submitting' ? 'rgba(255,20,147,.1)' : 'rgba(255,255,255,.05)',
                         color: t.status === 'success' ? '#00e676' : t.status === 'submitting' ? '#ff1493' : '#666'
