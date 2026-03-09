@@ -16,12 +16,35 @@ export default function App() {
   const [profiles, setProfiles] = useState(() => getStored('gmmtv_profiles', []));
   const [targets, setTargets] = useState(() => getStored('gmmtv_targets', []));
   const [countdowns, setCountdowns] = useState({});
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analyzeErr, setAnalyzeErr] = useState('');
-  const [quickPaste, setQuickPaste] = useState('');
-  const [bulkUrl, setBulkUrl] = useState('');
+  const [bulkData, setBulkData] = useState('');
   const intervalRef = useRef(null);
   const submittedMapRef = useRef({});
+
+  const parseTable = (text) => {
+    const lines = text.trim().split('\n').map(l => l.split('\t'));
+    if (lines.length < 2) return [];
+    const headers = lines[0].map(h => h.trim());
+    return lines.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { if (row[i]) obj[h] = row[i].trim(); });
+      return obj;
+    });
+  };
+
+  const getMatch = (title, rowData) => {
+    const t = removeAccents(title).toLowerCase();
+    for (const [key, val] of Object.entries(rowData)) {
+      const k = removeAccents(key).toLowerCase();
+      if (t.includes(k) || k.includes(t)) return val;
+    }
+    // Standard defaults if not in table
+    if (t.includes('email')) return data.email;
+    if (t.includes('hoo') || t.includes('first')) return data.firstName;
+    if (t.includes('ten') || t.includes('last')) return data.lastName;
+    if (t.includes('cccd') || t.includes('id') || t.includes('passport')) return data.idNumber;
+    if (t.includes('sdt') || t.includes('phone') || t.includes('dien thoai')) return data.phone;
+    return '';
+  };
 
   useEffect(() => { localStorage.setItem('gmmtv_data', JSON.stringify(data)); }, [data]);
   useEffect(() => { localStorage.setItem('gmmtv_profiles', JSON.stringify(profiles)); }, [profiles]);
@@ -33,29 +56,48 @@ export default function App() {
     for (let i = 0; i < newTargets.length; i++) {
       if (newTargets[i].fields) continue;
 
-      // Find the associated profile data
-      const p = profiles.find(x => x.firstName === newTargets[i].profileName) || data;
+      const row = newTargets[i].row; // The data from the Excel row
+      const url = row['URL'] || row['Link'] || row['link'] || newTargets[i].url;
+      if (!url) { setAnalyzeErr(`Dòng ${i + 1} thiếu link form!`); break; }
 
       try {
-        const res = await fetch(`/api/form-info?url=${encodeURIComponent(newTargets[i].url)}`);
+        const res = await fetch(`/api/form-info?url=${encodeURIComponent(url)}`);
         const json = await res.json();
         if (json.error) throw new Error(json.error);
+        newTargets[i].url = url;
         newTargets[i].fields = json.fields;
         newTargets[i].submitUrl = json.submitUrl;
         newTargets[i].mapping = {};
-        newTargets[i].email = p.email; // Store email with target
+
+        // Target settings from table
+        newTargets[i].date = row['Date'] || row['Ngày'] || targets[targets.length - 1]?.date || '';
+        newTargets[i].time = row['Time'] || row['Giờ'] || targets[targets.length - 1]?.time || '';
+
         const nameFields = json.fields.filter(f => f.autoMap === 'firstName' || f.autoMap === 'lastName');
+
         for (const f of json.fields) {
-          if (f.autoMap === 'email') newTargets[i].mapping[f.entryId] = p.email;
-          else if (f.autoMap === 'firstName') newTargets[i].mapping[f.entryId] = nameFields.length === 1 ? `${p.firstName} ${p.lastName}`.trim() : p.firstName;
-          else if (f.autoMap === 'lastName') newTargets[i].mapping[f.entryId] = p.lastName;
-          else if (f.autoMap === 'idNumber') newTargets[i].mapping[f.entryId] = p.idNumber;
-          else if (f.autoMap === 'phone') newTargets[i].mapping[f.entryId] = p.phone;
-          else if (f.autoMap === 'confirm') {
-            const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
-            newTargets[i].mapping[f.entryId] = yesOpt || f.options[0] || 'Yes';
+          // 1. Try matching from Table columns
+          let val = getMatch(f.title, row);
+
+          // 2. Fallback to Profile/Data if empty
+          if (!val) {
+            if (f.autoMap === 'email') val = row['Email'] || data.email;
+            else if (f.autoMap === 'firstName') val = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
+            else if (f.autoMap === 'lastName') val = data.lastName;
+            else if (f.autoMap === 'idNumber') val = data.idNumber;
+            else if (f.autoMap === 'phone') val = data.phone;
           }
+
+          if (f.autoMap === 'confirm') {
+            const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
+            val = yesOpt || f.options[0] || 'Yes';
+          }
+
+          newTargets[i].mapping[f.entryId] = val;
         }
+        // Capture email for submit
+        newTargets[i].email = newTargets[i].mapping[json.fields.find(f => f.autoMap === 'email')?.entryId] || data.email;
+
       } catch (e) { setAnalyzeErr(`Lỗi form ${i + 1}: ${e.message}`); break; }
     }
     setTargets(newTargets);
@@ -274,63 +316,58 @@ export default function App() {
           {/* ── STEP 2 ── */}
           {step === 2 && (
             <div className="card">
-              <div className="ctitle"><div className="cicon">🔗</div>Danh sách Form ({targets.length})</div>
+              <div className="ctitle"><div className="cicon">📊</div>Import dữ liệu từ Excel</div>
 
               <div className="fgrp">
-                <label>Thêm hàng loạt (Dán list link form)</label>
+                <label>Copy từ Excel và dán vào đây (Có tiêu đề cột)</label>
+                <div style={{ fontSize: '10px', color: '#555', marginBottom: '5px' }}>Yêu cầu có ít nhất cột: <strong>Link, Date, Time</strong>. Các cột khác (Họ Tên, CCCD...) sẽ tự động map.</div>
                 <textarea
-                  style={{ width: '100%', minHeight: '80px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '10px', padding: '10px', color: '#eeeef8', fontSize: '12px', fontFamily: 'monospace' }}
-                  placeholder="https://docs.google.com/forms/d/1...&#10;https://docs.google.com/forms/d/2..."
-                  value={bulkUrl} onChange={e => setBulkUrl(e.target.value)}
+                  style={{ width: '100%', minHeight: '150px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,147,20,0.3)', borderRadius: '12px', padding: '12px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
+                  placeholder="Link	Date	Time	Name	ID&#10;https://...	2026-03-26	10:00:00	Thu	12345&#10;https://...	2026-03-27	10:00:00	Nga	67890"
+                  value={bulkData} onChange={e => setBulkData(e.target.value)}
                 />
-                <button className="bsecondary" style={{ marginTop: '8px', width: '100%' }} onClick={() => {
-                  const links = bulkUrl.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-                  const newOnes = links.map(l => ({
+                <button className="bprimary" style={{ marginTop: '10px' }} onClick={() => {
+                  const rows = parseTable(bulkData);
+                  if (!rows.length) return alert('Dữ liệu không đúng định dạng!');
+                  const newTargets = rows.map(r => ({
                     id: Math.random().toString(36).substr(2, 9),
-                    url: l,
-                    date: targets[targets.length - 1]?.date || '',
-                    time: targets[targets.length - 1]?.time || '',
-                    profileName: data.firstName || 'Cá nhân',
+                    url: r['Link'] || r['URL'] || '',
+                    date: r['Date'] || r['Ngày'] || '',
+                    time: r['Time'] || r['Giờ'] || '',
+                    row: r,
                     status: 'idle'
                   }));
-                  setTargets([...targets, ...newOnes]);
-                  setBulkUrl('');
-                }}>+ Thêm vào danh sách</button>
+                  setTargets(newTargets);
+                }}>⚡ Lock & Load ({targets.length} hàng)</button>
               </div>
 
-              <div style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '16px' }}>
-                {targets.map((t, idx) => (
-                  <div key={t.id} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px', padding: '12px', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: '#ff1493', fontWeight: 700 }}>Form #{idx + 1}</span>
-                      <select
-                        value={t.profileName}
-                        onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, profileName: e.target.value } : x))}
-                        style={{ fontSize: '11px', padding: '2px 8px', background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#00e676' }}
-                      >
-                        <option value={data.firstName}>{data.firstName} (Hiện tại)</option>
-                        {profiles.map(p => <option key={p.firstName} value={p.firstName}>{p.firstName}</option>)}
-                      </select>
-                      <button style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '11px', cursor: 'pointer' }} onClick={() => setTargets(targets.filter(x => x.id !== t.id))}>Xóa</button>
-                    </div>
-                    <div className="fgrp" style={{ marginBottom: '8px' }}>
-                      <input style={{ fontSize: '11px', padding: '6px', color: '#888' }} value={t.url} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, url: e.target.value } : x))} />
-                    </div>
-                    <div className="frow">
-                      <input type="date" style={{ fontSize: '11px', padding: '6px' }} value={t.date} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, date: e.target.value } : x))} />
-                      <input type="time" step="1" style={{ fontSize: '11px', padding: '6px' }} value={t.time} onChange={e => setTargets(targets.map(x => x.id === t.id ? { ...x, time: e.target.value } : x))} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {targets.length > 0 && (
+                <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '16px', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+                    <thead style={{ background: 'rgba(255,255,255,.05)', color: '#888' }}>
+                      <tr><th style={{ padding: '8px', textAlign: 'left' }}>#</th><th style={{ padding: '8px', textAlign: 'left' }}>Link</th><th style={{ padding: '8px', textAlign: 'left' }}>Thời gian</th><th style={{ padding: '8px', textAlign: 'left' }}>Dữ liệu</th></tr>
+                    </thead>
+                    <tbody>
+                      {targets.map((t, idx) => (
+                        <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,.03)' }}>
+                          <td style={{ padding: '8px', color: '#ff1493' }}>{idx + 1}</td>
+                          <td style={{ padding: '8px', color: '#aaa' }}>{t.url.substring(0, 25)}...</td>
+                          <td style={{ padding: '8px' }}>{t.date} {t.time}</td>
+                          <td style={{ padding: '8px', color: '#00e676' }}>{Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {analyzeErr && <div className="err-box">❌ {analyzeErr}</div>}
-              {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích các form...</div>}
+              {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích và gán dữ liệu...</div>}
 
               <div className="brow">
                 <button className="bsecondary" onClick={() => setStep(1)}>← Quay lại</button>
                 <button className="bprimary" disabled={analyzing || !targets.length} onClick={analyzeAll}>
-                  {analyzing ? 'Đang phân tích...' : '🔍 Phân tích & Tiếp tục →'}
+                  {analyzing ? 'Đang phân tích...' : '🔍 Phân tích Mapping →'}
                 </button>
               </div>
             </div>
@@ -346,7 +383,7 @@ export default function App() {
                   <div key={t.id} style={{ marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                       <div style={{ fontWeight: 700, fontSize: '13px', color: '#ff1493' }}># {idx + 1}. {t.url.substring(0, 30)}...</div>
-                      <div style={{ fontSize: '11px', color: '#00e676', fontWeight: 700 }}>👤 {t.profileName}</div>
+                      <div style={{ fontSize: '11px', color: '#aaa' }}>{t.date} {t.time}</div>
                     </div>
                     <div className="fmap">
                       {t.fields?.map((f, fi) => (
@@ -403,7 +440,7 @@ export default function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span style={{ fontSize: '10px', fontWeight: 700, color: '#555' }}>FORM #{idx + 1}</span>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#00e676' }}>👤 {t.profileName}</span>
+                        <span style={{ fontSize: '11px', color: '#aaa' }}>{t.url.substring(0, 30)}...</span>
                       </div>
                       <span className={`gtag ${t.status}`} style={{
                         background: t.status === 'success' ? 'rgba(0,230,118,.1)' : t.status === 'submitting' ? 'rgba(255,20,147,.1)' : 'rgba(255,255,255,.05)',
