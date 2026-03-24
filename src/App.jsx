@@ -545,6 +545,21 @@ export default function App() {
             <div className="card">
               <div className="ctitle"><div className="cicon">⏱️</div>Dashboard Theo Dõi ({targets.length})</div>
 
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <div style={{ flex: 1, background: 'rgba(0,230,118,.1)', border: '1px solid rgba(0,230,118,.2)', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#00e676' }}>{targets.filter(t => t.status === 'success').length}</div>
+                  <div style={{ fontSize: '10px', color: '#5a8a6a', textTransform: 'uppercase' }}>Thành công</div>
+                </div>
+                <div style={{ flex: 1, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#aaa' }}>{targets.filter(t => t.status === 'idle').length}</div>
+                  <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase' }}>Đang chờ</div>
+                </div>
+                <div style={{ flex: 1, background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.2)', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#ff6b6b' }}>{targets.filter(t => t.status === 'error').length}</div>
+                  <div style={{ fontSize: '10px', color: '#cc5a5a', textTransform: 'uppercase' }}>Lỗi</div>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gap: '12px' }}>
                 {targets.map((t, idx) => (
                   <div key={t.id} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: '16px', padding: '16px' }}>
