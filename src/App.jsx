@@ -10,19 +10,39 @@ const getStored = (key, def) => {
   try { return v ? JSON.parse(v) : def; } catch { return def; }
 };
 
-const submitViaProxy = async (url, formData) => {
+const submitViaClient = async (url, formData) => {
   try {
-    const response = await fetch('/api/submit', {
+    const body = new URLSearchParams();
+    for (const [key, val] of Object.entries(formData)) {
+      if (val) body.append(key, val);
+    }
+    await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submitUrl: url, formData })
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
     });
-    const result = await response.json();
-    if (!response.ok || !result.success) throw new Error(result.error || 'Server error');
     return true;
   } catch (err) {
-    throw new Error(err.message || 'Lỗi kết nối / CAPTCHA');
+    throw new Error('Lỗi mạng hoặc bị chặn');
   }
+};
+
+const submitAndOpenTab = (url, formData) => {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  form.target = '_blank';
+  for (const [key, val] of Object.entries(formData)) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = key;
+    input.value = val;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => { if (document.body.contains(form)) document.body.removeChild(form); }, 1000);
 };
 
 export default function App() {
@@ -197,7 +217,7 @@ export default function App() {
       const now = new Date();
       const triggerStr = now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
       
-      await submitViaProxy(json.submitUrl, formData);
+      await submitViaClient(json.submitUrl, formData);
       
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
@@ -226,7 +246,7 @@ export default function App() {
       formData['fvv'] = '1';
       formData['pageHistory'] = '0';
       
-      await submitViaProxy(t.submitUrl, formData);
+      await submitViaClient(t.submitUrl, formData);
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
       setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'success', submitTime: doneStr } : x));
@@ -738,7 +758,17 @@ export default function App() {
 
                     {t.status === 'error' && (
                       <div style={{ fontSize: '11px', color: '#ff6b6b', textAlign: 'center' }}>
-                        Lỗi: {t.err} <button className="bsecondary" style={{ padding: '2px 8px', marginLeft: '5px' }} onClick={() => doSubmit(t.id)}>Thử lại</button>
+                        Lỗi: {t.err}
+                        <div style={{ marginTop: '8px' }}>
+                          <button className="bsecondary" style={{ padding: '4px 10px', fontSize: '10px' }} onClick={() => doSubmit(t.id)}>Biểu mẫu Ngầm lại</button>
+                          <button className="bprimary" style={{ padding: '4px 10px', fontSize: '10px', marginLeft: '6px', background: 'rgba(255,20,147,0.2)', color: '#ff1493', border: '1px solid currentColor' }} onClick={() => {
+                            const formData = {};
+                            for (const [entryId, val] of Object.entries(t.mapping)) { if (val) formData[entryId] = val; }
+                            if (t.email) formData['emailAddress'] = t.email;
+                            formData['fvv'] = '1'; formData['pageHistory'] = '0';
+                            submitAndOpenTab(t.submitUrl, formData);
+                          }}>Mở Tab Vượt CAPTCHA</button>
+                        </div>
                       </div>
                     )}
                   </div>
