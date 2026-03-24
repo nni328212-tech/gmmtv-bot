@@ -10,35 +10,19 @@ const getStored = (key, def) => {
   try { return v ? JSON.parse(v) : def; } catch { return def; }
 };
 
-const submitViaIframe = (url, bodyParams) => {
-  return new Promise((resolve) => {
-    const iframeName = 'iframe_' + Math.random().toString(36).substring(7);
-    const iframe = document.createElement('iframe');
-    iframe.name = iframeName;
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = url;
-    form.target = iframeName;
-
-    for (const [key, val] of bodyParams.entries()) {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = key;
-      input.value = val;
-      form.appendChild(input);
-    }
-    document.body.appendChild(form);
-    form.submit();
-
-    setTimeout(() => {
-      if (document.body.contains(form)) document.body.removeChild(form);
-      if (document.body.contains(iframe)) document.body.removeChild(iframe);
-      resolve(true);
-    }, 2000);
-  });
+const submitViaProxy = async (url, formData) => {
+  try {
+    const response = await fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submitUrl: url, formData })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Server error');
+    return true;
+  } catch (err) {
+    throw new Error(err.message || 'Lỗi kết nối / CAPTCHA');
+  }
 };
 
 export default function App() {
@@ -204,16 +188,16 @@ export default function App() {
       const emailField = json.fields.find(f => f.autoMap === 'email');
       const email = emailField ? mapping[emailField.entryId] : data.email;
       
-      const body = new URLSearchParams();
-      for (const [entryId, val] of Object.entries(mapping)) { if (val) body.append(entryId, val); }
-      if (email) body.append('emailAddress', email);
-      body.append('fvv', '1');
-      body.append('pageHistory', '0');
+      const formData = {};
+      for (const [entryId, val] of Object.entries(mapping)) { if (val) formData[entryId] = val; }
+      if (email) formData['emailAddress'] = email;
+      formData['fvv'] = '1';
+      formData['pageHistory'] = '0';
       
       const now = new Date();
       const triggerStr = now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
       
-      await submitViaIframe(json.submitUrl, body);
+      await submitViaProxy(json.submitUrl, formData);
       
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
@@ -236,13 +220,13 @@ export default function App() {
     setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'submitting', triggerTime: triggerStr } : x));
 
     try {
-      const body = new URLSearchParams();
-      for (const [entryId, val] of Object.entries(t.mapping)) { if (val) body.append(entryId, val); }
-      if (t.email) body.append('emailAddress', t.email);
-      body.append('fvv', '1');
-      body.append('pageHistory', '0');
+      const formData = {};
+      for (const [entryId, val] of Object.entries(t.mapping)) { if (val) formData[entryId] = val; }
+      if (t.email) formData['emailAddress'] = t.email;
+      formData['fvv'] = '1';
+      formData['pageHistory'] = '0';
       
-      await submitViaIframe(t.submitUrl, body);
+      await submitViaProxy(t.submitUrl, formData);
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
       setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'success', submitTime: doneStr } : x));
