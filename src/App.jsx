@@ -10,6 +10,37 @@ const getStored = (key, def) => {
   try { return v ? JSON.parse(v) : def; } catch { return def; }
 };
 
+const submitViaIframe = (url, bodyParams) => {
+  return new Promise((resolve) => {
+    const iframeName = 'iframe_' + Math.random().toString(36).substring(7);
+    const iframe = document.createElement('iframe');
+    iframe.name = iframeName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = iframeName;
+
+    for (const [key, val] of bodyParams.entries()) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = val;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+
+    setTimeout(() => {
+      if (document.body.contains(form)) document.body.removeChild(form);
+      if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      resolve(true);
+    }, 2000);
+  });
+};
+
 export default function App() {
   const [step, setStep] = useState(1);
   const [submitMode, setSubmitMode] = useState('fast');
@@ -176,11 +207,13 @@ export default function App() {
       const body = new URLSearchParams();
       for (const [entryId, val] of Object.entries(mapping)) { if (val) body.append(entryId, val); }
       if (email) body.append('emailAddress', email);
+      body.append('fvv', '1');
+      body.append('pageHistory', '0');
       
       const now = new Date();
       const triggerStr = now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
       
-      await fetch(json.submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+      await submitViaIframe(json.submitUrl, body);
       
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
@@ -206,7 +239,10 @@ export default function App() {
       const body = new URLSearchParams();
       for (const [entryId, val] of Object.entries(t.mapping)) { if (val) body.append(entryId, val); }
       if (t.email) body.append('emailAddress', t.email);
-      await fetch(t.submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+      body.append('fvv', '1');
+      body.append('pageHistory', '0');
+      
+      await submitViaIframe(t.submitUrl, body);
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
       setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'success', submitTime: doneStr } : x));
