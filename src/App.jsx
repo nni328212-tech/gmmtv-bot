@@ -53,6 +53,7 @@ export default function App() {
   }, [globalDate, globalTime]);
 
   const getMatch = (title, rowData) => {
+    if (!rowData) return '';
     const t = removeAccents(title).toLowerCase();
     for (const [key, val] of Object.entries(rowData)) {
       const k = removeAccents(key).toLowerCase();
@@ -577,7 +578,7 @@ export default function App() {
                                 <td style={{ padding: '8px', color: '#a000ff', fontWeight: 700 }}>{idx + 1}</td>
                                 <td style={{ padding: '8px', color: t.url ? '#aaa' : '#ff6b6b' }}>{t.url ? (t.url.substring(0, 25) + '...') : 'Thiếu Link!'}</td>
                                 <td style={{ padding: '8px', color: '#ff1493', fontWeight: 600 }}>{t.time} <span style={{color: '#888', fontWeight: 400}}>{t.date}</span></td>
-                                <td style={{ padding: '8px', color: '#00e676' }}>{t.row ? Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ') || 'Chỉ dùng profile' : 'Theo Profile'}</td>
+                                <td style={{ padding: '8px', color: '#00e676' }}>{t.row ? Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).map(k => `${k}: ${t.row[k]}`).join(' | ') || 'Chỉ dùng profile' : 'Theo Profile'}</td>
                               </tr>
                             ))}
                           </tbody>
