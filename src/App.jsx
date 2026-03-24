@@ -109,6 +109,57 @@ export default function App() {
     if (!analyzeErr) setStep(3);
   };
 
+  const instantShoot = async (url) => {
+    if (!url.includes('docs.google.com/forms') && !url.includes('forms.gle')) {
+      alert('Link Google Form không hợp lệ!');
+      return;
+    }
+    setTargets([{ id: 'fast', url, status: 'submitting', submitTime: '' }]);
+    setStep(4);
+    
+    try {
+      const res = await fetch(`/api/form-info?url=${encodeURIComponent(url)}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      
+      const mapping = {};
+      const nameFields = json.fields.filter(f => f.autoMap === 'firstName' || f.autoMap === 'lastName');
+      for (const f of json.fields) {
+        let val = '';
+        if (f.autoMap === 'email') val = data.email;
+        else if (f.autoMap === 'firstName') val = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
+        else if (f.autoMap === 'lastName') val = data.lastName;
+        else if (f.autoMap === 'idNumber') val = data.idNumber;
+        else if (f.autoMap === 'phone') val = data.phone;
+        
+        if (f.autoMap === 'confirm') {
+          const yesOpt = f.options.find(o => o.toLowerCase().includes('yes') || o.includes('ใช่'));
+          val = yesOpt || f.options[0] || 'Yes';
+        }
+        mapping[f.entryId] = val;
+      }
+      
+      const emailField = json.fields.find(f => f.autoMap === 'email');
+      const email = emailField ? mapping[emailField.entryId] : data.email;
+      
+      const body = new URLSearchParams();
+      for (const [entryId, val] of Object.entries(mapping)) { if (val) body.append(entryId, val); }
+      if (email) body.append('emailAddress', email);
+      
+      const now = new Date();
+      const triggerStr = now.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      
+      await fetch(json.submitUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+      
+      const done = new Date();
+      const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
+      
+      setTargets([{ id: 'fast', url, status: 'success', submitTime: doneStr, triggerTime: triggerStr }]);
+    } catch (e) {
+      setTargets([{ id: 'fast', url, status: 'error', err: e.message }]);
+    }
+  };
+
   const doSubmit = async (tid) => {
     const t = targets.find(x => x.id === tid);
     if (!t || t.status === 'success' || t.status === 'submitting') return;
@@ -338,69 +389,97 @@ export default function App() {
           {/* ── STEP 2 ── */}
           {step === 2 && (
             <div className="card">
-              <div className="ctitle"><div className="cicon">📊</div>Import dữ liệu từ Excel</div>
-
-              <div className="fgrp">
-                <label>Dán dữ liệu Excel (Ctrl+V)</label>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-                  <div style={{ flex: 1, fontSize: '11px', color: '#888', lineHeight: '1.4' }}>
-                    Mỗi hàng gồm một Link và dữ liệu của người đó. <br />
-                    <span style={{ color: '#ff1493' }}>Yêu cầu cột: <strong>Link, Date, Time</strong></span>
-                  </div>
-                  <button className="bsecondary" style={{ fontSize: '10px', height: 'fit-content', padding: '4px 10px' }} onClick={() => {
-                    const sample = "Link\tDate\tTime\tName\tCCCD\nhttps://forms.gle/K5GdudyfVgvFXgX5A\t2026-03-26\t10:00:00\tTHU\t012345\nhttps://forms.gle/GgjnPxYYdukDUfp39\t2026-03-27\t10:00:00\tNGA\t67890";
-                    navigator.clipboard.writeText(sample);
-                    alert('Đã copy dữ liệu mẫu! Hãy dán (Ctrl+V) vào ô bên dưới.');
-                  }}>📋 Copy mẫu Excel</button>
-                </div>
-                <textarea
-                  style={{ width: '100%', minHeight: '120px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,147,20,0.3)', borderRadius: '12px', padding: '12px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
-                  placeholder="Dán nội dung bôi đen từ Excel vào đây..."
-                  value={bulkData} onChange={e => setBulkData(e.target.value)}
+              <div className="ctitle"><div className="cicon">⚡</div>Cách thức Submit</div>
+              
+              <div style={{ background: 'rgba(255,20,147,.05)', border: '1px solid rgba(255,20,147,.3)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', color: '#ff1493', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '18px' }}>🔥</span> BẮN TỐC ĐỘ (Dành cho form sát giờ mới có link)
+                </h3>
+                <p style={{ fontSize: '11px', color: '#aaa', marginBottom: '12px', lineHeight: '1.5' }}>
+                  Sử dụng profile đang chọn. Chỉ cần dán link vào ô bên dưới, tool sẽ <strong>TỰ PHÂN TÍCH</strong> và <strong>TỰ GỬI</strong> ngay lập tức trong nháy mắt. Không cần phải qua bước hẹn giờ!
+                </p>
+                <input 
+                  type="text" 
+                  placeholder="Dán link Google Form vào đây (Ctrl+V)..." 
+                  style={{ width: '100%', borderColor: '#ff1493', background: 'rgba(0,0,0,0.2)', padding: '14px', fontSize: '13px' }}
+                  onChange={(e) => {
+                    const u = e.target.value.trim();
+                    if (u.includes('docs.google.com/forms') || u.includes('forms.gle')) {
+                      instantShoot(u);
+                    }
+                  }}
                 />
-                <button className="bprimary" style={{ marginTop: '10px' }} onClick={() => {
-                  const rows = parseTable(bulkData);
-                  if (!rows.length) return alert('Dữ liệu không đúng định dạng!');
-                  const newTargets = rows.map(r => ({
-                    id: Math.random().toString(36).substr(2, 9),
-                    url: r['Link'] || r['URL'] || '',
-                    date: r['Date'] || r['Ngày'] || '',
-                    time: r['Time'] || r['Giờ'] || '',
-                    row: r,
-                    status: 'idle'
-                  }));
-                  setTargets(newTargets);
-                }}>⚡ Xác nhận danh sách ({targets.length} form)</button>
               </div>
 
-              {targets.length > 0 && (
-                <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '16px', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
-                    <thead style={{ background: 'rgba(255,255,255,.05)', color: '#888' }}>
-                      <tr><th style={{ padding: '8px', textAlign: 'left' }}>#</th><th style={{ padding: '8px', textAlign: 'left' }}>Link</th><th style={{ padding: '8px', textAlign: 'left' }}>Thời gian</th><th style={{ padding: '8px', textAlign: 'left' }}>Dữ liệu</th></tr>
-                    </thead>
-                    <tbody>
-                      {targets.map((t, idx) => (
-                        <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,.03)' }}>
-                          <td style={{ padding: '8px', color: '#ff1493' }}>{idx + 1}</td>
-                          <td style={{ padding: '8px', color: '#aaa' }}>{t.url?.substring(0, 25)}...</td>
-                          <td style={{ padding: '8px' }}>{t.date} {t.time}</td>
-                          <td style={{ padding: '8px', color: '#00e676' }}>{t.row ? Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ') : 'No data'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div style={{ textAlign: 'center', marginBottom: '20px', fontSize: '12px', color: '#555', fontWeight: 600, letterSpacing: '2px' }}>--- HOẶC ---</div>
+
+              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '12px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', color: '#eeeef8', marginBottom: '8px' }}>🕒 HẸN GIỜ NHIỀU FORM (Có link trước)</h3>
+                <p style={{ fontSize: '11px', color: '#aaa', marginBottom: '12px' }}>Dùng dữ liệu Excel (gồm Link, Date, Time) để hẹn giờ bắn song song nhiều form cùng lúc.</p>
+
+                <div className="fgrp" style={{ marginTop: '16px' }}>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                    <div style={{ flex: 1, fontSize: '11px', color: '#888', lineHeight: '1.4' }}>
+                      <span style={{ color: '#ff1493' }}>Yêu cầu cột: <strong>Link, Date, Time</strong></span>
+                    </div>
+                    <button className="bsecondary" style={{ fontSize: '10px', height: 'fit-content', padding: '4px 10px' }} onClick={() => {
+                      const sample = "Link\tDate\tTime\tName\tCCCD\nhttps://forms.gle/K5GdudyfVgvFXgX5A\t2026-03-26\t10:00:00\tTHU\t012345\nhttps://forms.gle/GgjnPxYYdukDUfp39\t2026-03-27\t10:00:00\tNGA\t67890";
+                      navigator.clipboard.writeText(sample);
+                      alert('Đã copy dữ liệu mẫu! Hãy dán (Ctrl+V) vào ô bên dưới.');
+                    }}>📋 Copy mẫu Excel</button>
+                  </div>
+                  <textarea
+                    style={{ width: '100%', minHeight: '120px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,147,20,0.3)', borderRadius: '12px', padding: '12px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
+                    placeholder="Dán nội dung bôi đen từ Excel vào đây..."
+                    value={bulkData} onChange={e => setBulkData(e.target.value)}
+                  />
+                  <button className="bprimary" style={{ marginTop: '10px' }} onClick={() => {
+                    const rows = parseTable(bulkData);
+                    if (!rows.length) return alert('Dữ liệu không đúng định dạng!');
+                    const newTargets = rows.map(r => ({
+                      id: Math.random().toString(36).substr(2, 9),
+                      url: r['Link'] || r['URL'] || '',
+                      date: r['Date'] || r['Ngày'] || '',
+                      time: r['Time'] || r['Giờ'] || '',
+                      row: r,
+                      status: 'idle'
+                    }));
+                    setTargets(newTargets);
+                  }}>⚡ Xác nhận danh sách ({targets.length} form)</button>
                 </div>
-              )}
 
-              {analyzeErr && <div className="err-box">❌ {analyzeErr}</div>}
-              {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích và gán dữ liệu...</div>}
+                {targets.length > 0 && (
+                  <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '16px', border: '1px solid rgba(255,255,255,.05)', borderRadius: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+                      <thead style={{ background: 'rgba(255,255,255,.05)', color: '#888' }}>
+                        <tr><th style={{ padding: '8px', textAlign: 'left' }}>#</th><th style={{ padding: '8px', textAlign: 'left' }}>Link</th><th style={{ padding: '8px', textAlign: 'left' }}>Thời gian</th><th style={{ padding: '8px', textAlign: 'left' }}>Dữ liệu</th></tr>
+                      </thead>
+                      <tbody>
+                        {targets.map((t, idx) => (
+                          <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,.03)' }}>
+                            <td style={{ padding: '8px', color: '#ff1493' }}>{idx + 1}</td>
+                            <td style={{ padding: '8px', color: '#aaa' }}>{t.url?.substring(0, 25)}...</td>
+                            <td style={{ padding: '8px' }}>{t.date} {t.time}</td>
+                            <td style={{ padding: '8px', color: '#00e676' }}>{t.row ? Object.keys(t.row).filter(k => !['Link', 'URL', 'Date', 'Time', 'Ngày', 'Giờ'].includes(k)).join(', ') : 'No data'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-              <div className="brow">
-                <button className="bsecondary" onClick={() => setStep(1)}>← Quay lại</button>
-                <button className="bprimary" disabled={analyzing || !targets.length} onClick={analyzeAll}>
-                  {analyzing ? 'Đang phân tích...' : '🔍 Phân tích Mapping →'}
-                </button>
+                {analyzeErr && <div className="err-box">❌ {analyzeErr}</div>}
+                {analyzing && <div className="loader-row"><div className="spin spin-sm"></div>Đang phân tích và gán dữ liệu...</div>}
+
+                <div className="brow">
+                  <button className="bprimary" disabled={analyzing || !targets.length} onClick={analyzeAll}>
+                    {analyzing ? 'Đang phân tích...' : '🔍 Phân tích Mapping →'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="brow" style={{ marginTop: '16px' }}>
+                <button className="bsecondary" style={{ width: '100%' }} onClick={() => setStep(1)}>← Quay lại</button>
               </div>
             </div>
           )}

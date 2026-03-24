@@ -12,16 +12,17 @@ export async function onRequest(context) {
   const url = new URL(context.request.url);
   const formUrl = url.searchParams.get('url');
 
-  if (!formUrl || !formUrl.includes('docs.google.com/forms')) {
+  if (!formUrl || (!formUrl.includes('docs.google.com/forms') && !formUrl.includes('forms.gle'))) {
     return new Response(JSON.stringify({ error: 'Invalid Google Form URL' }), {
       status: 400, headers: corsHeaders
     });
   }
 
   try {
-    // Fetch the Google Form HTML server-side (no CORS restriction on server)
+    // Fetch the Google Form HTML server-side with redirect support
     const res = await fetch(formUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      redirect: 'follow'
     });
     const html = await res.text();
 
@@ -34,21 +35,19 @@ export async function onRequest(context) {
     }
 
     const rawData = JSON.parse(dataMatch[1]);
-    // Form questions are at rawData[1][1]
     const questions = rawData[1][1];
     const fields = [];
 
     for (const q of questions) {
       if (!q || !Array.isArray(q)) continue;
       const title = q[1] || '';
-      const type = q[3]; // 0=short text, 2=radio, 4=checkbox, 9=date, etc.
+      const type = q[3]; 
       const entryData = q[4];
       if (!entryData || !entryData[0]) continue;
 
       const entryId = entryData[0][0];
       if (!entryId) continue;
 
-      // For radio/checkbox, get options
       let options = [];
       if (entryData[0][1]) {
         options = entryData[0][1].map(o => o[0]).filter(Boolean);
@@ -57,10 +56,19 @@ export async function onRequest(context) {
       fields.push({ title, entryId: `entry.${entryId}`, type, options });
     }
 
-    // Extract form action ID
-    const formIdMatch = formUrl.match(/\/forms\/d\/([^/]+)/);
-    const formId = formIdMatch ? formIdMatch[1] : null;
-    const submitUrl = `https://docs.google.com/forms/d/${formId}/formResponse`;
+    // Extract reliable submit URL directly from the form action
+    let submitUrl = null;
+    const actionMatch = html.match(/<form[^>]+action=["']([^"']+formResponse)["']/);
+    
+    if (actionMatch) {
+      submitUrl = actionMatch[1];
+    } else {
+      // Fallback
+      const redirectedUrl = res.url;
+      const formIdMatch = redirectedUrl.match(/\/forms\/(?:u\/\d+\/)?d\/(?:e\/)?([^/]+)/);
+      const formId = formIdMatch ? formIdMatch[1] : null;
+      submitUrl = formId ? `https://docs.google.com/forms/d/e/${formId}/formResponse` : null;
+    }
 
     // Auto-map fields based on keywords
     const mapped = fields.map(f => {
@@ -75,7 +83,7 @@ export async function onRequest(context) {
       return { ...f, autoMap };
     });
 
-    return new Response(JSON.stringify({ fields: mapped, submitUrl, formId }), {
+    return new Response(JSON.stringify({ fields: mapped, submitUrl }), {
       headers: corsHeaders
     });
 
