@@ -393,7 +393,7 @@ export default function App() {
               
               <div style={{ background: 'rgba(255,20,147,.05)', border: '1px solid rgba(255,20,147,.3)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '14px', color: '#ff1493', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '18px' }}>🔥</span> BẮN TỐC ĐỘ (Dành cho form sát giờ mới có link)
+                  <span style={{ fontSize: '18px' }}>🔥</span> ĐIỀN FORM NHANH (Dành cho form sát giờ mới có link)
                 </h3>
                 <p style={{ fontSize: '11px', color: '#aaa', marginBottom: '12px', lineHeight: '1.5' }}>
                   Sử dụng profile đang chọn. Chỉ cần dán link vào ô bên dưới, tool sẽ <strong>TỰ PHÂN TÍCH</strong> và <strong>TỰ GỬI</strong> ngay lập tức trong nháy mắt. Không cần phải qua bước hẹn giờ!
