@@ -14,6 +14,7 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [submitMode, setSubmitMode] = useState('fast');
   const [data, setData] = useState(() => getStored('gmmtv_data', { email: '', firstName: '', lastName: '', idNumber: '', phone: '' }));
+  const [telegram, setTelegram] = useState(() => getStored('gmmtv_telegram', { token: '', chatId: '' }));
   const [profiles, setProfiles] = useState(() => getStored('gmmtv_profiles', []));
   const [targets, setTargets] = useState(() => getStored('gmmtv_targets', []));
   const [countdowns, setCountdowns] = useState({});
@@ -53,6 +54,18 @@ export default function App() {
   useEffect(() => { localStorage.setItem('gmmtv_data', JSON.stringify(data)); }, [data]);
   useEffect(() => { localStorage.setItem('gmmtv_profiles', JSON.stringify(profiles)); }, [profiles]);
   useEffect(() => { localStorage.setItem('gmmtv_targets', JSON.stringify(targets)); }, [targets]);
+  useEffect(() => { localStorage.setItem('gmmtv_telegram', JSON.stringify(telegram)); }, [telegram]);
+
+  const notifyTelegram = (formUrl, status, timeStr, userObj) => {
+    if (!telegram.token || !telegram.chatId) return;
+    const icon = status === 'Thành công' ? '✅' : '❌';
+    const msg = `${icon} GMMTV BOT THÔNG BÁO:\n\nForm: ${formUrl}\nUser: ${userObj.firstName || 'Ẩn danh'} ${userObj.lastName || ''}\nEmail: ${userObj.email || 'Không có'}\nTrạng thái: ${status}\nLúc: ${timeStr}`;
+    fetch(`https://api.telegram.org/bot${telegram.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: telegram.chatId, text: msg })
+    }).catch(e => console.log('Telegram fail:', e));
+  };
 
   const analyzeAll = async () => {
     setAnalyzing(true); setAnalyzeErr('');
@@ -156,8 +169,10 @@ export default function App() {
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
       
       setTargets([{ id: 'fast', url, status: 'success', submitTime: doneStr, triggerTime: triggerStr }]);
+      notifyTelegram(url, 'Thành công', doneStr, data);
     } catch (e) {
       setTargets([{ id: 'fast', url, status: 'error', err: e.message }]);
+      notifyTelegram(url, `Lỗi: ${e.message}`, new Date().toLocaleTimeString('vi-VN'), data);
     }
   };
 
@@ -178,8 +193,10 @@ export default function App() {
       const done = new Date();
       const doneStr = done.toLocaleTimeString('vi-VN', { hour12: false }) + '.' + String(done.getMilliseconds()).padStart(3, '0');
       setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'success', submitTime: doneStr } : x));
+      notifyTelegram(t.url, 'Thành công', doneStr, data);
     } catch (e) {
       setTargets(prev => prev.map(x => x.id === tid ? { ...x, status: 'error', err: e.message } : x));
+      notifyTelegram(t.url, `Lỗi: ${e.message}`, new Date().toLocaleTimeString('vi-VN'), data);
     }
   };
 
@@ -382,6 +399,18 @@ export default function App() {
                 <label>Số điện thoại (Phone Number)</label>
                 <input type="tel" placeholder="Ví dụ: 0912345678" value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} />
               </div>
+              
+              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)', borderRadius: '10px', padding: '12px', marginTop: '20px', marginBottom: '15px' }}>
+                <label style={{ color: '#00e676', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ fontSize: '14px' }}>🔔</span> Tùy chọn: Nhận thông báo Telegram (Admin)
+                </label>
+                <div style={{ fontSize: '10px', color: '#888', marginBottom: '10px' }}>Nếu bạn muốn nhận tin nhắn báo về điện thoại ngay khi website nộp thành công. (Bỏ trống nếu không cần)</div>
+                <div className="frow">
+                  <input type="text" placeholder="Bot Token (Ví dụ: 123:ABC...)" value={telegram.token} onChange={e => setTelegram({ ...telegram, token: e.target.value })} style={{ padding: '8px', fontSize: '11px' }} />
+                  <input type="text" placeholder="Chat ID (Ví dụ: 987654...)" value={telegram.chatId} onChange={e => setTelegram({ ...telegram, chatId: e.target.value })} style={{ padding: '8px', fontSize: '11px' }} />
+                </div>
+              </div>
+
               <div className="warn"><strong>⚠️ Lưu ý</strong>Hệ thống tự động VIẾT HOA và BỎ DẤU. Tên cần khớp hoàn toàn với CCCD/Hộ chiếu.</div>
               <button className="bprimary" onClick={() => { if (Object.values(data).every(v => v.trim())) setStep(2); else alert('Điền đầy đủ thông tin!'); }}>Tiếp theo →</button>
             </div>
@@ -413,19 +442,27 @@ export default function App() {
                     Chỉ cần dán link sát giờ
                   </h3>
                   <p style={{ fontSize: '11px', color: '#aaa', marginBottom: '12px', lineHeight: '1.5' }}>
-                    Sử dụng profile đang chọn. Chỉ cần dán link vào ô bên dưới, tool sẽ <strong>TỰ PHÂN TÍCH</strong> và <strong>TỰ GỬI</strong> ngay lập tức trong nháy mắt. Không cần phải bấm thêm bất kỳ nút nào!
+                    Sử dụng profile đang chọn. Chỉ cần dán link vào ô bên dưới, tool sẽ <strong>TỰ PHÂN TÍCH</strong> và <strong>TỰ GỬI</strong> ngay lập tức.
                   </p>
-                  <input 
-                    type="text" 
-                    placeholder="Dán link Google Form vào đây (Ctrl+V)..." 
-                    style={{ width: '100%', borderColor: '#ff1493', background: 'rgba(0,0,0,0.2)', padding: '14px', fontSize: '13px' }}
-                    onChange={(e) => {
-                      const u = e.target.value.trim();
-                      if (u.includes('docs.google.com/forms') || u.includes('forms.gle')) {
-                        instantShoot(u);
-                      }
-                    }}
-                  />
+                  
+                  <div style={{ position: 'relative', marginBottom: '15px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="➡ Bấm Ctrl+V dán link vào đây và KHÔNG CẦN LÀM GÌ CẢ..." 
+                      style={{ width: '100%', borderColor: '#ff1493', background: 'rgba(0,0,0,0.4)', padding: '16px', fontSize: '14px', color: '#fff', boxShadow: '0 0 15px rgba(255,20,147,0.2)' }}
+                      onChange={(e) => {
+                        const u = e.target.value.trim();
+                        if (u.includes('docs.google.com/forms') || u.includes('forms.gle')) {
+                          instantShoot(u);
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#ff1493', fontSize: '12px', fontStyle: 'italic', animation: 'glw 1.5s infinite alternate' }}>
+                    <div className="spin spin-sm" style={{ width: '14px', height: '14px', borderWidth: '2px' }}></div>
+                    Hệ thống đang chờ bạn dán link để tự động nộp...
+                  </div>
                 </div>
               )}
 
