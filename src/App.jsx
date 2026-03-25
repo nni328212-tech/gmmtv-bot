@@ -95,10 +95,10 @@ export default function App() {
       if (t.includes(k) || k.includes(t)) return val;
     }
     // Standard defaults if not in table
-    if (t.includes('email')) return data.email;
-    if (t.includes('hoo') || t.includes('first')) return data.firstName;
-    if (t.includes('ten') || t.includes('last')) return data.lastName;
-    if (t.includes('cccd') || t.includes('id') || t.includes('passport')) return data.idNumber;
+    if (t.includes('email') || t.includes('gmail') || t.includes('mail')) return data.email;
+    if (t.includes('hoo') || t.includes('first') || t.includes('tên') || t.includes('name')) return data.firstName;
+    if (t.includes('ten') || t.includes('last') || t.includes('họ')) return data.lastName;
+    if (t.includes('cccd') || t.includes('id') || t.includes('passport') || t.includes('cmnd') || t.includes('căn cước')) return data.idNumber;
     if (t.includes('sdt') || t.includes('phone') || t.includes('dien thoai')) return data.phone;
     return '';
   };

@@ -62,6 +62,7 @@ export async function onRequest(context) {
     
     if (actionMatch) {
       submitUrl = actionMatch[1];
+      if (submitUrl.startsWith('/')) submitUrl = 'https://docs.google.com' + submitUrl;
     } else {
       // Fallback
       const redirectedUrl = res.url;
@@ -74,12 +75,12 @@ export async function onRequest(context) {
     const mapped = fields.map(f => {
       const t = f.title.toLowerCase();
       let autoMap = null;
-      if (t.includes('email') || t.includes('อีเมล')) autoMap = 'email';
+      if (t.includes('email') || t.includes('gmail') || t.includes('mail') || t.includes('อีเมล')) autoMap = 'email';
       else if (t.includes('first') || t.includes('ชื่อ-นามสกุล') || t.includes('ชื่อ') || (t.includes('name') && !t.includes('last'))) autoMap = 'firstName';
       else if (t.includes('last') || t.includes('นามสกุล')) autoMap = 'lastName';
-      else if (t.includes('id') || t.includes('passport') || t.includes('identification') || t.includes('cccd') || t.includes('เลขบัตรประชาชน') || t.includes('เลขพาสปอร์ต') || t.includes('เลขบัตร')) autoMap = 'idNumber';
+      else if (t.includes('id') || t.includes('passport') || t.includes('identification') || t.includes('cccd') || t.includes('cmnd') || t.includes('เลขบัตรประชาชน') || t.includes('เลขพาสปอร์ต') || t.includes('เลขบัตร')) autoMap = 'idNumber';
       else if (t.includes('phone') || t.includes('tel') || t.includes('mobile') || t.includes('โทร') || t.includes('เบอร์')) autoMap = 'phone';
-      else if (t.includes('yes') || t.includes('review') || t.includes('confirm') || t.includes('ตรวจสอบ') || t.includes('ใช่') || t.includes('agree') || t.includes('ยอมรับ')) autoMap = 'confirm';
+      else if (t.includes('yes') || t.includes('review') || t.includes('confirm') || t.includes('ตรวจสอบ') || t.includes('ใช่') || t.includes('agree') || t.includes('đồng ý') || t.includes('ยอมรับ')) autoMap = 'confirm';
       return { ...f, autoMap };
     });
 
