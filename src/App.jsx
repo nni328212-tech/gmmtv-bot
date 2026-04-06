@@ -92,14 +92,22 @@ export default function App() {
     const t = removeAccents(title).toLowerCase();
     for (const [key, val] of Object.entries(rowData)) {
       const k = removeAccents(key).toLowerCase();
-      if (t.includes(k) || k.includes(t)) return val;
+      // Only match if the table column is not completely empty
+      if (k && (t.includes(k) || k.includes(t)) && val) return val;
     }
+    
+    const dMail = rowData['Email'] || rowData['email'] || data.email;
+    const dFirst = rowData['First'] || rowData['first'] || data.firstName;
+    const dLast = rowData['Last'] || rowData['last'] || data.lastName;
+    const dId = rowData['ID'] || rowData['id'] || rowData['Id'] || data.idNumber;
+    const dPhone = rowData['Phone'] || rowData['phone'] || data.phone;
+
     // Standard defaults if not in table
-    if (t.includes('email') || t.includes('gmail') || t.includes('mail')) return data.email;
-    if (t.includes('hoo') || t.includes('first') || t.includes('tên') || t.includes('name')) return data.firstName;
-    if (t.includes('ten') || t.includes('last') || t.includes('họ')) return data.lastName;
-    if (t.includes('cccd') || t.includes('id') || t.includes('passport') || t.includes('cmnd') || t.includes('căn cước')) return data.idNumber;
-    if (t.includes('sdt') || t.includes('phone') || t.includes('dien thoai')) return data.phone;
+    if (t.includes('email') || t.includes('gmail') || t.includes('mail')) return dMail;
+    if (t.includes('hoo') || t.includes('first') || t.includes('tên') || t.includes('name')) return dFirst;
+    if (t.includes('ten') || t.includes('last') || t.includes('họ')) return dLast;
+    if (t.includes('cccd') || t.includes('id') || t.includes('passport') || t.includes('cmnd') || t.includes('căn cước')) return dId;
+    if (t.includes('sdt') || t.includes('phone') || t.includes('dien thoai')) return dPhone;
     return '';
   };
 
@@ -150,11 +158,14 @@ export default function App() {
 
           // 2. Fallback to Profile/Data if empty
           if (!val) {
-            if (f.autoMap === 'email') val = row['Email'] || data.email;
-            else if (f.autoMap === 'firstName') val = nameFields.length === 1 ? `${data.firstName} ${data.lastName}`.trim() : data.firstName;
-            else if (f.autoMap === 'lastName') val = data.lastName;
-            else if (f.autoMap === 'idNumber') val = data.idNumber;
-            else if (f.autoMap === 'phone') val = data.phone;
+            const dFirst = row['First'] || row['first'] || data.firstName;
+            const dLast = row['Last'] || row['last'] || data.lastName;
+            
+            if (f.autoMap === 'email') val = row['Email'] || row['email'] || data.email;
+            else if (f.autoMap === 'firstName') val = nameFields.length === 1 ? `${dFirst} ${dLast}`.trim() : dFirst;
+            else if (f.autoMap === 'lastName') val = dLast;
+            else if (f.autoMap === 'idNumber') val = row['ID'] || row['id'] || row['Id'] || data.idNumber;
+            else if (f.autoMap === 'phone') val = row['Phone'] || row['phone'] || data.phone;
           }
 
           if (f.autoMap === 'confirm') {
@@ -599,6 +610,42 @@ export default function App() {
                           }
                         }}
                       />
+                      
+                      <div style={{ marginTop: '12px', display: 'flex' }}>
+                        <button className="bsecondary" style={{ background: 'rgba(0,230,118,0.1)', color: '#00e676', border: '1px solid rgba(0,230,118,0.3)', width: '100%', padding: '12px', fontWeight: 600 }} onClick={() => {
+                          const val = bulkData.trim();
+                          let link = '';
+                          if (val.includes('docs.google.com/forms') || val.includes('forms.gle')) {
+                             link = val.split('\n').find(l => l.trim().startsWith('http'));
+                          }
+                          if (!link) {
+                            alert('Vui lòng dán ít nhất 1 đường link Form vào ô chữ nhật phía trên trước!'); 
+                            return;
+                          }
+                          if (!profiles || profiles.length === 0) {
+                            alert('Danh bạ của bạn chưa có ai. Vui lòng quay lại Bước 1 để Import Danh Sách Excel vào Profile trước!'); 
+                            return;
+                          }
+                          const newTargets = profiles.map(p => ({
+                            id: Math.random().toString(36).substr(2, 9),
+                            url: link.trim(),
+                            date: globalDate,
+                            time: globalTime,
+                            row: {
+                              'Link': link.trim(),
+                              'Email': p.email,
+                              'First': p.firstName,
+                              'Last': p.lastName,
+                              'ID': p.idNumber,
+                              'Phone': p.phone
+                            },
+                            status: 'idle'
+                          }));
+                          setTargets(newTargets);
+                        }}>
+                           🌟 Tự động nộp Form cho TOÀN BỘ Danh Bạ ({profiles ? profiles.length : 0} người)
+                        </button>
+                      </div>
                     </div>
 
                     {targets.length > 0 && (
