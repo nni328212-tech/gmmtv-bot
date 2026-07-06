@@ -49,6 +49,7 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [submitMode, setSubmitMode] = useState('fast');
   const [data, setData] = useState(() => getStored('gmmtv_data', { email: '', firstName: '', lastName: '', idNumber: '', phone: '' }));
+  const [fullNameText, setFullNameText] = useState(() => [data.firstName, data.lastName].filter(Boolean).join(' '));
   const [telegram, setTelegram] = useState(() => getStored('gmmtv_telegram', { token: '', chatId: '' }));
   const [profiles, setProfiles] = useState(() => getStored('gmmtv_profiles', []));
   const [targets, setTargets] = useState(() => getStored('gmmtv_targets', []));
@@ -57,6 +58,9 @@ export default function App() {
   const [analyzeErr, setAnalyzeErr] = useState('');
   const [quickPaste, setQuickPaste] = useState('');
   const [bulkData, setBulkData] = useState('');
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [linkProfileId, setLinkProfileId] = useState('');
+  const [multiLinkText, setMultiLinkText] = useState('');
   const [globalDate, setGlobalDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [globalTime, setGlobalTime] = useState('10:00:00');
   const intervalRef = useRef(null);
@@ -397,7 +401,10 @@ export default function App() {
                   <button className="bsecondary" style={{ width: 'auto', padding: '0 15px' }} onClick={() => {
                     const parts = quickPaste.split(/[|,,;]/).map(p => p.trim());
                     if (parts.length >= 5) {
-                      setData({ email: parts[0], firstName: removeAccents(parts[1]).toUpperCase(), lastName: removeAccents(parts[2]).toUpperCase(), idNumber: parts[3], phone: parts[4] });
+                      const firstName = removeAccents(parts[1]).toUpperCase();
+                      const lastName = removeAccents(parts[2]).toUpperCase();
+                      setData({ email: parts[0], firstName, lastName, idNumber: parts[3], phone: parts[4] });
+                      setFullNameText([firstName, lastName].filter(Boolean).join(' '));
                       setQuickPaste('');
                     } else alert('Vui lòng nhập đúng định dạng!');
                   }}>Dán</button>
@@ -408,9 +415,11 @@ export default function App() {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label>Profiles đã lưu (Hàng loạt từ Excel)</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <select style={{ width: '100%' }} value="" onChange={e => {
-                      const p = profiles.find(x => x.idNumber === e.target.value);
-                      if (p) setData(p);
+                    <select style={{ width: '100%' }} value={selectedProfileId} onChange={e => {
+                      const val = e.target.value;
+                      setSelectedProfileId(val);
+                      const p = profiles.find(x => x.idNumber === val);
+                      if (p) { setData(p); setFullNameText([p.firstName, p.lastName].filter(Boolean).join(' ')); }
                     }}>
                       <option value="">-- Chọn profile đã lưu --</option>
                       {profiles.map(p => <option key={p.idNumber} value={p.idNumber}>{p.firstName} {p.lastName} ({p.idNumber})</option>)}
@@ -427,6 +436,20 @@ export default function App() {
                         alert('Đã lưu profile hiện tại!');
                       }}>Lưu người này</button>
 
+                      <button
+                        className="bsecondary"
+                        style={{ flex: 1, color: '#ff6b6b', borderColor: 'rgba(255,107,107,.3)', opacity: selectedProfileId ? 1 : .5 }}
+                        disabled={!selectedProfileId}
+                        onClick={() => {
+                          if (!selectedProfileId) return;
+                          if (!confirm('Xóa profile này khỏi danh bạ?')) return;
+                          setProfiles(profiles.filter(p => p.idNumber !== selectedProfileId));
+                          setSelectedProfileId('');
+                        }}
+                      >🗑 Xóa profile này</button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button className="bsecondary" style={{ flex: 1 }} onClick={() => {
                         const txt = prompt("Dán danh sách Excel (Email	First	Last	ID	Phone):");
                         if (!txt) return;
@@ -440,6 +463,18 @@ export default function App() {
                           alert(`Đã thêm ${newProfiles.length} profiles!`);
                         }
                       }}>📥 Nhập hàng loạt Profile</button>
+
+                      <button
+                        className="bsecondary"
+                        style={{ flex: 1, color: '#ff6b6b', borderColor: 'rgba(255,107,107,.3)', opacity: profiles.length ? 1 : .5 }}
+                        disabled={!profiles.length}
+                        onClick={() => {
+                          if (!profiles.length) return;
+                          if (!confirm(`Xóa toàn bộ ${profiles.length} profiles trong danh bạ?`)) return;
+                          setProfiles([]);
+                          setSelectedProfileId('');
+                        }}
+                      >🗑 Xóa tất cả danh bạ</button>
                     </div>
                   </div>
                 </div>
@@ -449,15 +484,21 @@ export default function App() {
                 <label>Email nhận xác nhận</label>
                 <input type="email" placeholder="example@gmail.com" value={data.email} onChange={e => setData({ ...data, email: e.target.value })} />
               </div>
-              <div className="frow fgrp">
-                <div>
-                  <label>First Name (Họ)</label>
-                  <input type="text" placeholder="DINH" value={data.firstName} onChange={e => setData({ ...data, firstName: removeAccents(e.target.value).toUpperCase() })} />
-                </div>
-                <div>
-                  <label>Last Name (Tên đệm & Tên)</label>
-                  <input type="text" placeholder="THI THU" value={data.lastName} onChange={e => setData({ ...data, lastName: removeAccents(e.target.value).toUpperCase() })} />
-                </div>
+              <div className="fgrp">
+                <label>Họ và Tên (First - Last Name)</label>
+                <input
+                  type="text"
+                  placeholder="DINH THI THU"
+                  value={fullNameText}
+                  onChange={e => {
+                    const raw = removeAccents(e.target.value).toUpperCase();
+                    setFullNameText(raw);
+                    const sp = raw.indexOf(' ');
+                    const firstName = sp === -1 ? raw : raw.slice(0, sp);
+                    const lastName = sp === -1 ? '' : raw.slice(sp + 1).replace(/^\s+/, '');
+                    setData({ ...data, firstName, lastName });
+                  }}
+                />
               </div>
               <div className="fgrp">
                 <label>Số giấy tờ (Identification / Passport No.)</label>
@@ -646,6 +687,38 @@ export default function App() {
                            🌟 Tự động nộp Form cho TOÀN BỘ Danh Bạ ({profiles ? profiles.length : 0} người)
                         </button>
                       </div>
+                    </div>
+
+                    <div style={{ marginTop: '16px', background: 'rgba(0,230,118,.03)', border: '1px dashed rgba(0,230,118,.25)', borderRadius: '12px', padding: '14px' }}>
+                      <div style={{ fontSize: '13px', color: '#00e676', fontWeight: 700, marginBottom: '6px' }}>🔗 Nộp NHIỀU link cho 1 người</div>
+                      <div style={{ fontSize: '10.5px', color: '#888', marginBottom: '10px', lineHeight: 1.5 }}>Chọn 1 người trong danh bạ (hoặc dùng thông tin đang nhập ở Bước 1), dán nhiều link (mỗi dòng 1 link), rồi bấm Thêm — tool sẽ tạo 1 dòng cho mỗi link, đều dùng chung thông tin người đó.</div>
+                      <select style={{ width: '100%', marginBottom: '8px' }} value={linkProfileId} onChange={e => setLinkProfileId(e.target.value)}>
+                        <option value="">-- Dùng thông tin đang nhập ở Bước 1 ({data.firstName || '...'} {data.lastName || ''}) --</option>
+                        {profiles.map(p => <option key={p.idNumber} value={p.idNumber}>{p.firstName} {p.lastName} ({p.idNumber})</option>)}
+                      </select>
+                      <textarea
+                        style={{ width: '100%', minHeight: '80px', background: 'rgba(0,0,0,.4)', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '10px', padding: '10px', color: '#eeeef8', fontSize: '11px', fontFamily: 'monospace', outline: 'none' }}
+                        placeholder={'https://forms.gle/AAA...\nhttps://forms.gle/BBB...\nhttps://forms.gle/CCC...'}
+                        value={multiLinkText}
+                        onChange={e => setMultiLinkText(e.target.value)}
+                      />
+                      <button className="bsecondary" style={{ width: '100%', marginTop: '8px', background: 'rgba(0,230,118,0.1)', color: '#00e676', border: '1px solid rgba(0,230,118,0.3)' }} onClick={() => {
+                        const links = multiLinkText.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+                        if (!links.length) { alert('Vui lòng dán ít nhất 1 link!'); return; }
+                        const p = linkProfileId ? profiles.find(x => x.idNumber === linkProfileId) : data;
+                        if (!p) { alert('Không tìm thấy hồ sơ!'); return; }
+                        const newTargets = links.map(u => ({
+                          id: Math.random().toString(36).substr(2, 9),
+                          url: u,
+                          date: globalDate,
+                          time: globalTime,
+                          row: { 'Link': u, 'Email': p.email, 'First': p.firstName, 'Last': p.lastName, 'ID': p.idNumber, 'Phone': p.phone },
+                          status: 'idle'
+                        }));
+                        setTargets(prev => [...prev, ...newTargets]);
+                        setMultiLinkText('');
+                        alert(`Đã thêm ${newTargets.length} link vào danh sách cho ${p.firstName} ${p.lastName}!`);
+                      }}>➕ Thêm các link trên vào danh sách</button>
                     </div>
 
                     {targets.length > 0 && (
